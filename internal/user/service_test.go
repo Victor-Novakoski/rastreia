@@ -52,12 +52,12 @@ func TestCreateDriver(t *testing.T) {
 	fs := &fakeStore{}
 	svc := NewService(fs)
 
-	u, err := svc.CreateDriver(context.Background(), CreateInput{Name: " João ", Email: "Joao@Example.com", Password: "12345678"})
+	u, err := svc.CreateDriver(context.Background(), CreateInput{Name: " João ", Email: "Joao@Example.com", Password: "motorista-forte"})
 	require.NoError(t, err)
 	assert.Equal(t, User{ID: 1, Name: "João", Email: "joao@example.com", Role: auth.RoleDriver}, u)
-	assert.True(t, auth.CheckPassword(fs.users[0].PasswordHash, "12345678"), "password is stored hashed")
+	assert.True(t, auth.CheckPassword(fs.users[0].PasswordHash, "motorista-forte"), "password is stored hashed")
 
-	_, err = svc.CreateDriver(context.Background(), CreateInput{Name: "Outro", Email: "joao@example.com", Password: "12345678"})
+	_, err = svc.CreateDriver(context.Background(), CreateInput{Name: "Outro", Email: "joao@example.com", Password: "motorista-forte"})
 	assert.ErrorIs(t, err, apperr.ErrConflict)
 
 	_, err = svc.CreateDriver(context.Background(), CreateInput{Name: "", Email: "x", Password: "123"})
@@ -79,4 +79,14 @@ func TestEnsureAdmin_IsIdempotent(t *testing.T) {
 	require.NoError(t, svc.EnsureAdmin(context.Background(), in))
 	require.Len(t, fs.users, 1)
 	assert.Equal(t, auth.RoleAdmin, fs.users[0].Role)
+}
+
+func TestCreateDriver_PasswordPolicy(t *testing.T) {
+	svc := NewService(&fakeStore{})
+	for _, pw := range []string{"curta123", "1234567890", "Senha12345"} {
+		_, err := svc.CreateDriver(context.Background(), CreateInput{Name: "Ana", Email: "ana@example.com", Password: pw})
+		var verr *apperr.ValidationError
+		require.ErrorAs(t, err, &verr, pw)
+		assert.Contains(t, verr.Fields, "password")
+	}
 }

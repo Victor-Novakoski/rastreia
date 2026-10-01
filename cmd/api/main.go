@@ -62,10 +62,15 @@ func run() error {
 		Addr: ":" + cfg.Port,
 		Handler: server.New(server.Deps{
 			Tokens:     tokens,
-			Auth:       auth.NewHandler(queries, tokens),
+			Auth:       auth.NewHandler(queries, tokens, auth.NewLoginGuard()),
 			Users:      user.NewHandler(users),
 			Deliveries: delivery.NewHandler(delivery.NewService(queries)),
 			Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
+			Options: server.Options{
+				Production:  cfg.IsProduction(),
+				CORSOrigins: cfg.AllowedOrigins(),
+				TrustProxy:  cfg.TrustProxy,
+			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

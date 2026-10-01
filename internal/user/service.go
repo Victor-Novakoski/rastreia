@@ -51,7 +51,7 @@ func NewService(s Store) *Service {
 }
 
 func (s *Service) CreateDriver(ctx context.Context, in CreateInput) (User, error) {
-	return s.create(ctx, in, auth.RoleDriver)
+	return s.create(ctx, in, auth.RoleDriver, true)
 }
 
 func (s *Service) ListDrivers(ctx context.Context) ([]User, error) {
@@ -76,18 +76,24 @@ func (s *Service) EnsureAdmin(ctx context.Context, in CreateInput) error {
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	_, err = s.create(ctx, in, auth.RoleAdmin)
+	// The admin password comes from configuration, which already refuses the
+	// development default in production, so only the length rule applies.
+	_, err = s.create(ctx, in, auth.RoleAdmin, false)
 	return err
 }
 
-func (s *Service) create(ctx context.Context, in CreateInput, role string) (User, error) {
+func (s *Service) create(ctx context.Context, in CreateInput, role string, rejectCommon bool) (User, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Email = normalizeEmail(in.Email)
 
 	v := apperr.Validator{}
 	v.Check(in.Name != "", "name", "is required")
 	v.Check(validEmail(in.Email), "email", "must be a valid e-mail")
-	v.Check(len(in.Password) >= 8, "password", "must have at least 8 characters")
+	problem := auth.PasswordProblem(in.Password)
+	if !rejectCommon && len([]rune(in.Password)) >= auth.MinPasswordLength {
+		problem = ""
+	}
+	v.Check(problem == "", "password", problem)
 	if err := v.Err(); err != nil {
 		return User{}, err
 	}

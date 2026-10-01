@@ -31,7 +31,7 @@ func TestLogin(t *testing.T) {
 	require.NoError(t, err)
 	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
 	tokens := NewTokens(testSecret, time.Hour)
-	h := NewHandler(users, tokens)
+	h := NewHandler(users, tokens, NewLoginGuard())
 
 	cases := []struct {
 		name string
@@ -60,4 +60,25 @@ func TestLogin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLogin_LocksAfterRepeatedFailures(t *testing.T) {
+	hash, err := HashPassword("correct-horse")
+	require.NoError(t, err)
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	h := NewHandler(users, NewTokens(testSecret, time.Hour), NewLoginGuard())
+
+	login := func(password string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		body := `{"email":"ana@example.com","password":"` + password + `"}`
+		h.Login(rec, httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(body)))
+		return rec
+	}
+
+	for range 5 {
+		require.Equal(t, http.StatusUnauthorized, login("wrong").Code)
+	}
+	rec := login("correct-horse")
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code, "even the right password waits for the lock")
+	assert.NotEmpty(t, rec.Header().Get("Retry-After"))
 }

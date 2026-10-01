@@ -21,11 +21,35 @@ type Deps struct {
 	Users      *user.Handler
 	Deliveries *delivery.Handler
 	Ready      func(r *http.Request) error
+	Options    Options
+}
+
+type Options struct {
+	Production  bool
+	CORSOrigins []string
+	TrustProxy  bool
+	// Requests per minute per IP. Zero uses the defaults.
+	RateLimit      int
+	LoginRateLimit int
 }
 
 func New(d Deps) http.Handler {
+	opts := d.Options
+	if opts.RateLimit == 0 {
+		opts.RateLimit = 120
+	}
+	if opts.LoginRateLimit == 0 {
+		opts.LoginRateLimit = 10
+	}
+
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, middleware.Logger, middleware.Recoverer)
+	r.Use(middleware.RequestID)
+	if opts.TrustProxy {
+		r.Use(middleware.RealIP)
+	}
+	r.Use(middleware.Logger, middleware.Recoverer)
+	r.Use(securityHeaders(opts.Production), corsPolicy(opts.CORSOrigins))
+	r.Use(rateLimit(opts.RateLimit, opts.TrustProxy))
 	r.Use(middleware.Timeout(15 * time.Second))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +64,7 @@ func New(d Deps) http.Handler {
 		_, _ = w.Write(api.OpenAPI)
 	})
 
-	r.Post("/auth/login", d.Auth.Login)
+	r.With(rateLimit(opts.LoginRateLimit, opts.TrustProxy)).Post("/auth/login", d.Auth.Login)
 
 	r.Group(func(r chi.Router) {
 		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
