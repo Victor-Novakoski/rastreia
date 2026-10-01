@@ -46,6 +46,7 @@ Checklist para toda mudança (detalhes em [SECURITY.md](SECURITY.md)):
 - **Branches:** `main` é o que está publicado; `develop` junta o trabalho pronto para a próxima versão. Ninguém faz push direto nas duas: tudo entra por pull request.
 - **Fluxo:** criar a branch a partir da `develop` (`feat/...`, `fix/...`, `docs/...`, `chore/...`), abrir PR para a `develop` e fazer merge com os checks verdes. A branch é apagada automaticamente depois do merge.
 - **Versão:** quando a `develop` fecha uma etapa, abrir PR da `develop` para a `main`.
+- **Como fazer o merge:** feature → `develop` com squash (um commit por PR); `develop` → `main` sempre com merge commit, nunca rebase ou squash, para as duas branches não divergirem. Para atualizar a branch de feature, `git pull --rebase origin develop`.
 - `main` e `develop` sempre funcionando: sobem com `docker compose up` e passam nos testes.
 - Commits pequenos, com mensagem em português que diz o que muda (ex.: "Rate limit no login").
 - Nunca commitar `.env`, binários ou arquivos gerados fora do sqlc.
