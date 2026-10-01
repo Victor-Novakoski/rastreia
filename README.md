@@ -29,17 +29,11 @@ Sobe o Postgres e a API em `http://localhost:8080`, já com um admin de teste:
 
 A API roda com [air](https://github.com/air-verse/air) dentro do container: a cada arquivo `.go`, `.sql` ou `.yaml` salvo, ela recompila e reinicia sozinha. Para parar, `docker compose down`.
 
-Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, use outra: `DB_PORT=5433 docker compose up --build` (ou coloque `DB_PORT=5433` no `.env`).
-
-Para subir a imagem de produção, sem air:
-
-```bash
-docker compose -f docker-compose.yml up --build
-```
+A API roda com [air](https://github.com/air-verse/air) dentro do Docker, com o código montado no container: a cada arquivo `.go`, `.sql` ou `.yaml` salvo, ela é recompilada e reiniciada sozinha. Essa configuração de desenvolvimento fica em `docker-compose.override.yml`, que o Docker Compose carrega automaticamente.
 
 ### Rodando o air direto na máquina
 
-Suba só o banco e chame o air na raiz do projeto (precisa do `.env` e de Go 1.26):
+Suba só o banco e chame o air na raiz do projeto:
 
 ```bash
 cp .env.example .env

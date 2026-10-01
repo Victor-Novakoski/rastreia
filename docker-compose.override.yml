@@ -1,8 +1,8 @@
-# Ambiente de desenvolvimento: a API roda com air e recompila a cada alteração.
-# O docker compose carrega este arquivo sozinho junto com o docker-compose.yml.
-# Para subir a imagem de produção, sem air: docker compose -f docker-compose.yml up --build
+# Carregado automaticamente pelo docker compose: a API roda com air e
+# recompila a cada alteração. A imagem de produção é o estágio final do Dockerfile.
 services:
   api:
+    image: rastreia-api-dev
     build:
       context: .
       target: dev
