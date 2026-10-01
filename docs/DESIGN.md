@@ -1,62 +1,77 @@
 # Design
 
-Como o produto parece e se comporta para quem usa.
+Convenções de design da API e das interfaces. O objetivo é que tudo pareça feito pela mesma pessoa.
 
-## Princípios
+## API
 
-- **Um fluxo, sem distração:** criar entrega, atualizar status, acompanhar. Cada tela serve a um desses passos.
-- **Motorista primeiro no celular:** botões grandes, uma mão, funciona com sinal fraco.
-- **Status sempre visível:** a mesma cor e o mesmo nome do status em todas as telas.
-- **Acessível:** contraste AA, foco visível, tudo usável pelo teclado, status nunca só por cor (sempre com texto).
+### Recursos e rotas
+- REST com JSON. Recursos no plural: `/deliveries`, `/drivers`.
+- Rotas do motorista ficam sob `/me/...` (ex.: `/me/deliveries`), sempre filtradas pelo usuário do token.
+- Rotas públicas ficam sob `/public/...` (ex.: `/public/tracking/{code}`) e nunca recebem id interno, só o código de rastreio.
+- Mudança de status é um recurso próprio: `POST /deliveries/{id}/events`. Não existe `PATCH` de status.
 
-## Telas
+### Formato
+- Campos em `snake_case`.
+- Datas em RFC 3339, em UTC (`2026-10-01T20:00:00Z`).
+- Ids numéricos (`int64`) só nas rotas autenticadas. O código de rastreio é o identificador público.
+- Campos opcionais ausentes vêm como `null`, não somem do JSON.
+- Corpo JSON com limite de 1 MB e campos desconhecidos rejeitados.
 
-### 1. Login (admin e motorista)
+### Erros
+Sempre o mesmo formato:
 
-E-mail, senha e botão Entrar. Erro genérico "E-mail ou senha inválidos". Botão desabilitado com carregando durante o envio. Depois do login, admin vai para Entregas e motorista para Minhas entregas.
+```json
+{ "error": "mensagem curta" }
+```
 
-### 2. Entregas (admin, desktop)
+Validação (422) traz os campos:
 
-- Tabela: código, destinatário, motorista, status, atualizado em.
-- Filtro por status e paginação.
-- Botão "Nova entrega" abre um formulário lateral: destinatário, e-mail, endereço, motorista (opcional).
-- Clique na linha abre o detalhe: dados editáveis, histórico de eventos e o link público para copiar.
+```json
+{ "error": "invalid input", "fields": { "recipient_email": "must be a valid e-mail" } }
+```
 
-### 3. Motoristas (admin)
+| Status | Quando |
+| --- | --- |
+| 400 | JSON inválido, id malformado |
+| 401 | Sem token, token inválido ou login errado |
+| 403 | Autenticado, mas sem permissão |
+| 404 | Não existe (ou não pertence a quem pede, para não revelar que existe) |
+| 409 | Conflito (ex.: e-mail já usado, transição de status inválida) |
+| 422 | Dados inválidos, com `fields` |
+| 429 | Limite de requisições excedido |
+| 500 | Erro inesperado, mensagem genérica |
 
-Lista e formulário de cadastro: nome, e-mail, senha inicial.
+### Paginação
+- `?page=1&size=20`. `size` máximo 100; valores inválidos caem no padrão.
+- Ordenação padrão: mais recentes primeiro.
 
-### 4. Minhas entregas (motorista, celular)
+## Interfaces (etapa 3)
 
-- Cartões com destinatário, endereço e status.
-- Cada cartão tem o próximo passo como botão principal ("Coletei", "Saí para entrega", "Entreguei") e "Não consegui entregar" como ação secundária, que pede uma observação.
-- Confirmação antes de marcar como entregue ou falhou.
+Três superfícies, uma identidade visual:
 
-### 5. Rastreio público (cliente, celular e desktop)
-
-- Código de rastreio no topo, status atual em destaque e uma linha do tempo com os eventos.
-- Atualiza sozinha (WebSocket), com um indicador discreto de "ao vivo".
-- Sem login e sem dados pessoais além do primeiro nome.
-- Código inválido mostra "Entrega não encontrada", sem diferenciar de código inexistente.
-
-## Status
-
-| Status | Texto | Cor (Tailwind) |
+| Superfície | Dispositivo principal | Prioridade |
 | --- | --- | --- |
-| pending | Aguardando coleta | slate |
-| picked_up | Coletado | blue |
-| in_transit | Em rota | amber |
-| delivered | Entregue | green |
-| failed | Não entregue | red |
+| Painel admin | Desktop | Densidade de informação: tabela com filtros, busca e status visível |
+| App do motorista | Celular, uma mão, na rua | Botões grandes, poucos toques, funciona com sinal ruim |
+| Rastreio público | Celular, link vindo de e-mail | Carregar rápido; status e linha do tempo entendidos em 3 segundos |
 
-## Visual
+### Princípios
+- **Mobile first** para motorista e rastreio público; área de toque mínima de 44 px.
+- **Todo estado tem tela:** carregando, vazio, erro e sucesso. Nada de tela branca.
+- **Bloquear durante envio:** botão desabilitado e com indicador enquanto a requisição está em andamento, para evitar envio duplo.
+- **Feedback de erro no campo:** os `fields` do 422 aparecem embaixo do campo correspondente.
+- **Status sempre com cor + texto + ícone**, nunca só cor (acessibilidade).
+- **Textos em português do Brasil**, datas em `dd/mm/aaaa HH:mm` no fuso do usuário.
+- Contraste mínimo WCAG AA; navegação por teclado no painel admin.
 
-- **Tipografia:** Inter, tamanhos da escala do Tailwind; números da tabela com `tabular-nums`.
-- **Cores:** fundo neutro (slate), uma cor de marca (indigo) para ações principais, cores de status só para status.
-- **Componentes:** botão (primário, secundário, perigo), input com mensagem de erro abaixo, badge de status, tabela, cartão, toast, modal de confirmação.
-- **Estados:** toda tela tem carregando (skeleton), vazio (com ação para começar) e erro (com tentar de novo).
-- **Tema escuro:** suportado desde o início, seguindo o sistema.
+### Status na interface
 
-## Textos
+| Status | Rótulo | Cor (semântica) |
+| --- | --- | --- |
+| `pending` | Aguardando coleta | neutra |
+| `picked_up` | Coletado | informação |
+| `in_transit` | Em rota | informação (destaque) |
+| `delivered` | Entregue | sucesso |
+| `failed` | Não entregue | erro |
 
-Português, frases curtas, sem jargão técnico. Erros dizem o que fazer: "Informe um e-mail válido", não "invalid input".
+Paleta, tipografia e componentes concretos serão definidos no início da etapa 3 e registrados aqui.

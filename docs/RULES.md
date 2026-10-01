@@ -1,48 +1,58 @@
 # Regras do projeto
 
-Regras para manter o projeto no eixo. Vale para todo código novo.
+Regras que valem para qualquer mudança. Se uma regra atrapalhar, ela é discutida e alterada aqui, não ignorada em silêncio.
 
-## Escopo
+## 1. Escopo
 
-- Só entra o que está no [PRD](PRD.md). Ideia nova vai para "Depois" no [TASKS.md](TASKS.md).
-- Uma etapa por vez. A etapa só termina com testes passando, README atualizado e código na `main`.
-- Todo o código é original e escrito para este projeto.
+- Toda funcionalidade nova precisa estar no [PRD](PRD.md) e em [TASKS.md](TASKS.md) antes de ser implementada.
+- Uma tarefa por vez. Melhorias que aparecerem no caminho viram item novo em TASKS, não entram de carona.
+- Nada de dependência, serviço ou camada nova "para o futuro". Entra quando uma tarefa precisar.
 
-## Go
+## 2. Código Go
 
-- Formatação com `gofmt`; `go vet` sem avisos.
-- Camadas: handler → service → store. Handler não fala com o banco; service não conhece HTTP.
-- SQL só em `internal/database/queries`, gerado com `sqlc generate`. Nunca concatenar SQL.
-- Mudança de banco só por migration nova. Migration publicada não se edita.
-- Erros: serviço devolve erros de `apperr`; handler usa `httpx.WriteError`. Erro inesperado vira 500 sem detalhes para o cliente e com log no servidor.
-- Toda entrada é validada no service, mesmo que o front já valide.
-- Respostas nunca expõem campos internos (por exemplo `password_hash`). Usar structs de resposta.
-- Configuração só por variável de ambiente, lida em `internal/config`.
+- Respeitar as camadas de [ARCHITECTURE.md](ARCHITECTURE.md): handler só fala HTTP; regra de negócio fica no service; banco só via sqlc.
+- SQL só em `internal/database/queries/*.sql`, sempre com parâmetros. Nunca montar SQL concatenando strings.
+- `internal/store` é gerado: alterar a query e rodar `make sqlc`, nunca editar o arquivo gerado.
+- Mudança de schema = nova migration (`up` e `down`). Migration que já está na `main` não é editada.
+- Services devolvem tipos do domínio, nunca a struct do `store` direto para o handler (evita vazar campos como `password_hash`).
+- Erros: `apperr.Validator` para validação, `apperr.ErrNotFound`/`ErrConflict` para os casos conhecidos. Erro inesperado sobe com `fmt.Errorf("contexto: %w", err)` e vira 500 genérico.
+- Comentários e identificadores em inglês, como o código atual. Docs, README e mensagens de commit em português.
+- `gofmt` e `go vet` limpos (`make lint`).
 
-## Front-end
+## 3. Segurança
 
-- TypeScript estrito, sem `any`.
-- Validação com o mesmo formato de erro da API (`fields`).
-- Chamadas à API só pelo cliente HTTP central, com TanStack Query.
+Checklist para toda mudança (detalhes em [SECURITY.md](SECURITY.md)):
 
-## Testes
+- [ ] Entrada validada no back-end, com tamanho máximo para textos, mesmo que o front já valide.
+- [ ] Rota nova tem autenticação e papel definidos explicitamente; rota pública é exceção justificada.
+- [ ] Recurso acessado por id confere se pertence a quem pede (IDOR).
+- [ ] Resposta não expõe hash, token, dados pessoais desnecessários nem detalhes internos de erro.
+- [ ] Nenhum segredo no código, em log ou em commit. Valores novos vão para `.env.example` com placeholder.
+- [ ] Dependência nova é necessária, mantida e passa no `govulncheck`.
 
-- Toda regra de negócio nova tem teste unitário com testify.
-- Rotas novas têm teste de handler; a partir da etapa 2, teste de integração com Postgres real (testcontainers).
-- Bug corrigido ganha um teste que falhava antes da correção.
+## 4. Testes
 
-## Git
+- Regra de negócio nova tem teste no service. Rota nova tem teste do handler (status e corpo).
+- Bug corrigido ganha teste que falhava antes da correção.
+- `make test` passando antes de qualquer commit.
 
-- Commits pequenos, em português, no imperativo ou descrevendo o que mudou.
-- `main` sempre funcionando. Trabalho maior vai em branch e entra por PR com CI verde.
-- `.env` nunca vai para o git. Segredos só por variável de ambiente.
+## 5. API
 
-## API
+- Seguir as convenções de [DESIGN.md](DESIGN.md) (formato de erro, paginação, nomes em snake_case).
+- Toda rota nova ou alterada é atualizada em `api/openapi.yaml` no mesmo commit.
 
-- Rotas e respostas documentadas em `api/openapi.yaml` no mesmo commit.
-- JSON em `snake_case`. Datas em RFC 3339 (UTC).
-- Códigos: 400 corpo malformado, 401 sem login, 403 sem permissão, 404 não encontrado ou não é seu, 409 conflito, 422 validação, 429 limite de requisições.
+## 6. Git
 
-## Segurança
+- `main` sempre funcionando: sobe com `docker compose up` e passa nos testes.
+- Commits pequenos, com mensagem em português que diz o que muda (ex.: "Rate limit no login").
+- Nunca commitar `.env`, binários ou arquivos gerados fora do sqlc.
 
-- Seguir o [SECURITY.md](SECURITY.md). Item novo de risco entra lá antes de entrar no código.
+## 7. Documentação
+
+- Mudou comportamento, rota, variável de ambiente ou decisão de arquitetura: atualizar o doc correspondente no mesmo commit.
+- Decisão relevante (escolha de lib, trade-off, algo que foi descartado) vai para [MEMORY.md](MEMORY.md).
+- Tarefa concluída é marcada em [TASKS.md](TASKS.md).
+
+## Definição de pronto
+
+Uma tarefa só está pronta quando: funciona com `docker compose up`, tem testes, passa no lint, o checklist de segurança foi revisado, OpenAPI e docs estão atualizados e o item está marcado em TASKS.
