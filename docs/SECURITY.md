@@ -50,8 +50,9 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 - A API não sobe com `JWT_SECRET` com menos de 32 caracteres.
 - Com `APP_ENV=production`, a API **recusa subir** com o `JWT_SECRET` ou o `ADMIN_PASSWORD` de desenvolvimento, ou com origem de CORS sem `https` (`internal/config`, com testes).
 
+- gitleaks na CI varre todo o histórico do git a cada PR, procurando chave ou senha commitada por engano.
+
 **Falta**
-- Varredura de segredos no CI (gitleaks) para pegar chave commitada por engano.
 - Em produção (AWS), segredos no Secrets Manager ou SSM Parameter Store, nunca em arquivo.
 
 ## 2. Validação no front-end — ⚪
@@ -149,10 +150,12 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - Na etapa 2 o testcontainers trouxe o `moby/go-archive` v0.2.0 com o GO-2026-6253 (alcançável só pelo código de teste); atualizado para a v0.3.0, que corrige.
 - Imagem final distroless, sem shell nem gerenciador de pacotes, rodando como usuário não-root.
 
+- `govulncheck` roda na CI em todo PR.
+- Dependabot abre PR semanal para a `develop` com atualizações de módulos Go, imagens Docker e GitHub Actions.
+- As GitHub Actions são fixadas pelo hash do commit, não pela tag, porque tags podem ser trocadas por quem invadir o repositório da action.
+
 **Falta**
-- `govulncheck` no CI bloqueando merge.
-- Dependabot (ou Renovate) para módulos Go, imagens Docker e GitHub Actions.
-- Varredura da imagem Docker (Trivy) no CI.
+- Varredura da imagem Docker (Trivy) na CI.
 
 ## 14. Tokens mal otimizados — 🟡
 
@@ -222,7 +225,7 @@ Middleware em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Op
 
 ## 23. Falsificação de IP — ✅
 
-O `X-Forwarded-For` só é lido com `TRUST_PROXY=true`, que deve ser ligado apenas atrás do load balancer em produção. Fora disso, o IP é o da conexão. Teste em `internal/server` garante que um `X-Forwarded-For` falso não escapa do rate limit.
+O `X-Forwarded-For` só é lido com `TRUST_PROXY=true`, que deve ser ligado apenas atrás do load balancer em produção. Fora disso, o IP é o da conexão. Mesmo com ele ligado, a API usa só o **último** IP do cabeçalho, que é o que o load balancer acrescenta; os da esquerda vêm do cliente e podem ser inventados. Por isso não usamos o `middleware.RealIP` do chi, que pega o primeiro. Testes em `internal/server` cobrem os dois casos.
 
 ## 24. Enumeração de e-mails — ✅
 

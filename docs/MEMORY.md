@@ -12,6 +12,9 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-01 — Conventional Commits e CI no GitHub Actions.** *Histórico legível e todo PR conferido (lint, sqlc, testes, imagem, govulncheck, gitleaks, título do PR).* Actions fixadas por hash do commit.
+- **2026-10-01 — IP do cliente atrás de proxy = último valor do `X-Forwarded-For`.** *O `middleware.RealIP` do chi usa o primeiro, que o cliente pode falsificar (achado pelo golangci-lint).* (chi RealIP, httprate KeyByRealIP)
+- **2026-10-01 — Licença MIT.** *Padrão para portfólio: qualquer um pode ler e reutilizar com crédito.*
 - **2026-10-01 — Git flow simples: `develop` + branches de feature, PR obrigatório.** *Push direto bloqueado em `main` e `develop`; branch apagada automaticamente no merge.* (push direto na main)
 - **2026-10-01 — Go com chi, sem framework.** *Biblioteca padrão + roteador leve deixa o código explícito e fácil de testar.* (Gin, Echo, Fiber)
 - **2026-10-01 — sqlc + pgx em vez de ORM.** *SQL escrito à mão e revisável, código tipado gerado, parâmetros sempre — elimina SQL injection por construção.* (GORM, ent)

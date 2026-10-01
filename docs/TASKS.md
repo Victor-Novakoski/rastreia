@@ -54,11 +54,16 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [ ] Validação nos formulários e bloqueio durante envio (#2, #9)
 - [ ] CSP e regras contra XSS (#20)
 
-## Etapa 4 — CI (GitHub Actions)
+## Etapa 4 — CI (GitHub Actions) 🟡
 
-- [ ] Testes, lint e build em todo PR
-- [ ] `govulncheck`, gitleaks e Trivy bloqueando merge (#1, #13)
-- [ ] Dependabot para Go, Docker e Actions (#13)
+- [x] Testes (unitários e integração), golangci-lint, sqlc em dia e build da imagem em todo PR e push na `develop` e `main`
+- [x] `govulncheck` e gitleaks (#1, #13)
+- [x] Título do PR em Conventional Commits
+- [x] Dependabot para Go, Docker e Actions, apontando para a `develop` (#13)
+- [x] Template de PR, `.editorconfig` e licença MIT
+- [ ] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
+- [ ] Varredura da imagem Docker (Trivy)
+- [x] Badge da CI no README
 
 ## Etapa 5 — Tempo real
 
