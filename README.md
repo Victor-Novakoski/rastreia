@@ -21,13 +21,13 @@ Precisa só de Docker.
 docker compose up --build
 ```
 
-Sobe o Postgres e a API em `http://localhost:8080`, já com um admin de teste:
+A API sobe em `http://localhost:8080` e já cria um admin de teste:
 
 | E-mail | Senha |
 | --- | --- |
 | admin@rastreia.dev | admin12345 |
 
-A API roda com [air](https://github.com/air-verse/air) dentro do container: a cada arquivo `.go`, `.sql` ou `.yaml` salvo, ela recompila e reinicia sozinha. Para parar, `docker compose down`.
+Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, suba o banco em outra porta com `DB_PORT=5433 docker compose up --build`.
 
 A API roda com [air](https://github.com/air-verse/air) dentro do Docker, com o código montado no container: a cada arquivo `.go`, `.sql` ou `.yaml` salvo, ela é recompilada e reiniciada sozinha. Essa configuração de desenvolvimento fica em `docker-compose.override.yml`, que o Docker Compose carrega automaticamente.
 
