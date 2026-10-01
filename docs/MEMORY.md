@@ -12,6 +12,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-01 — Git flow simples: `develop` + branches de feature, PR obrigatório.** *Push direto bloqueado em `main` e `develop`; branch apagada automaticamente no merge.* (push direto na main)
 - **2026-10-01 — Go com chi, sem framework.** *Biblioteca padrão + roteador leve deixa o código explícito e fácil de testar.* (Gin, Echo, Fiber)
 - **2026-10-01 — sqlc + pgx em vez de ORM.** *SQL escrito à mão e revisável, código tipado gerado, parâmetros sempre — elimina SQL injection por construção.* (GORM, ent)
 - **2026-10-01 — Migrations embutidas e aplicadas ao subir a API.** *Um binário só, sem passo manual; o banco sempre fica na versão do código.*
