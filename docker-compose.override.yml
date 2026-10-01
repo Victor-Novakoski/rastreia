@@ -1,5 +1,6 @@
 # Ambiente de desenvolvimento: a API roda com air e recompila a cada alteração.
-# Uso: make dev (ou docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+# O docker compose carrega este arquivo sozinho junto com o docker-compose.yml.
+# Para subir a imagem de produção, sem air: docker compose -f docker-compose.yml up --build
 services:
   api:
     build:

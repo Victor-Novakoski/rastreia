@@ -21,36 +21,30 @@ Precisa só de Docker.
 docker compose up --build
 ```
 
-A API sobe em `http://localhost:8080` e já cria um admin de teste:
+Sobe o Postgres e a API em `http://localhost:8080`, já com um admin de teste:
 
 | E-mail | Senha |
 | --- | --- |
 | admin@rastreia.dev | admin12345 |
 
-Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, suba o banco em outra porta com `DB_PORT=5433 docker compose up --build`.
+A API roda com [air](https://github.com/air-verse/air) dentro do container: a cada arquivo `.go`, `.sql` ou `.yaml` salvo, ela recompila e reinicia sozinha. Para parar, `docker compose down`.
 
-### Desenvolvimento com hot reload
+Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, use outra: `DB_PORT=5433 docker compose up --build` (ou coloque `DB_PORT=5433` no `.env`).
+
+Para subir a imagem de produção, sem air:
 
 ```bash
-make dev
+docker compose -f docker-compose.yml up --build
 ```
 
-Sobe o Postgres e a API com [air](https://github.com/air-verse/air) dentro do Docker, com o código montado no container. A cada arquivo `.go`, `.sql` ou `.yaml` salvo, a API é recompilada e reiniciada sozinha. `DB_PORT` funciona aqui também (`DB_PORT=5433 make dev`).
+### Rodando o air direto na máquina
 
-Se preferir rodar o air direto na máquina, suba só o banco e chame o air na raiz do projeto (precisa do `.env`):
+Suba só o banco e chame o air na raiz do projeto (precisa do `.env` e de Go 1.26):
 
 ```bash
 cp .env.example .env
 docker compose up -d db
 air
-```
-
-Para rodar a API fora do Docker:
-
-```bash
-cp .env.example .env
-docker compose up -d db
-make run
 ```
 
 ## Testes
