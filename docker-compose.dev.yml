@@ -1,0 +1,15 @@
+# Ambiente de desenvolvimento: a API roda com air e recompila a cada alteração.
+# Uso: make dev (ou docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+services:
+  api:
+    build:
+      context: .
+      target: dev
+    volumes:
+      - .:/src
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+
+volumes:
+  go-mod:
+  go-build:
