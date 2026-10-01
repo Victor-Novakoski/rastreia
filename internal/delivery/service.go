@@ -202,16 +202,22 @@ func (in ListInput) validate() error {
 	if in.Status != nil {
 		v.Check(validStatus(*in.Status), "status", "must be one of "+strings.Join(statuses, ", "))
 	}
+	v.Check(in.Page <= maxPage, "page", "must be at most 10000")
 	return v.Err()
 }
 
+// maxPage keeps the offset (page * size) far from int32 overflow.
+const maxPage = 10_000
+
 // page turns page/size into limit/offset, falling back to 20 items per page.
 func (in ListInput) page() (limit, offset int32) {
-	page, size := max(in.Page, 1), in.Size
+	page, size := min(max(in.Page, 1), maxPage), in.Size
 	if size <= 0 || size > 100 {
 		size = 20
 	}
-	return int32(size), int32((page - 1) * size)
+	// Both are bounded above (size <= 100, page <= maxPage), so they fit in int32.
+	return int32(size), int32((page - 1) * size) //nolint:gosec // bounded above
+
 }
 
 func fromStoreList(rows []store.Delivery) []Delivery {

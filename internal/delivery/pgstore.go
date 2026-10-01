@@ -27,6 +27,6 @@ func (p *PGStore) InTx(ctx context.Context, fn func(Store) error) error {
 		return fn(p)
 	}
 	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
-		return fn(&PGStore{Queries: p.Queries.WithTx(tx), pool: p.pool, inTx: true})
+		return fn(&PGStore{Queries: p.WithTx(tx), pool: p.pool, inTx: true})
 	})
 }
