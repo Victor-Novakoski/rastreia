@@ -1,8 +1,8 @@
 # Segurança
 
-Como o Rastreia trata cada risco, o que já está feito e o que falta. As tarefas pendentes estão em [TASKS.md](TASKS.md) (etapa 1.5) e o checklist rápido para cada mudança está em [RULES.md](RULES.md#3-segurança).
+Como o Rastreia trata cada risco, o que já está feito e o que falta. As tarefas pendentes estão em [TASKS.md](TASKS.md) e o checklist rápido para cada mudança está em [RULES.md](RULES.md#3-segurança).
 
-Situação revisada em 01/10/2026, depois da etapa 1.5 (segurança da base).
+Situação revisada em 01/10/2026, depois da etapa 2 (eventos e rastreio público).
 
 **Legenda:** ✅ feito · 🟡 parcial · 🔴 pendente · ⚪ ainda não se aplica (regra definida para quando se aplicar)
 
@@ -15,17 +15,17 @@ Situação revisada em 01/10/2026, depois da etapa 1.5 (segurança da base).
 | 3 | Validação no back-end | ✅ | — |
 | 4 | SQL Injection | ✅ | — |
 | 5 | Autenticação fraca | 🟡 | Baixa |
-| 6 | IDOR | 🟡 | Alta na etapa 2 |
+| 6 | IDOR | ✅ | — |
 | 7 | Senhas no banco | ✅ | — |
 | 8 | Força bruta | ✅ | — |
-| 9 | Envio duplicado | 🔴 | Média |
+| 9 | Envio duplicado | 🟡 | Etapa 3 (front) |
 | 10 | CSRF | ⚪ | — |
 | 11 | Upload sem validação | ⚪ | — |
 | 12 | Vazamento de informação | 🟡 | Média |
 | 13 | Dependências vulneráveis | 🟡 | Média |
 | 14 | Tokens | 🟡 | Média |
-| 15 | Rate limit | 🟡 | Etapa 2 |
-| 16 | Dados sensíveis expostos | 🟡 | Alta |
+| 15 | Rate limit | 🟡 | Etapa 5 (Redis) |
+| 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) |
 | 17 | SSRF | ⚪ | — |
 | 18 | Cookies inseguros | ⚪ | — |
 | 19 | CORS | ✅ | — |
@@ -36,7 +36,7 @@ Situação revisada em 01/10/2026, depois da etapa 1.5 (segurança da base).
 | 24 | Enumeração de e-mails | ✅ | — |
 | 25 | Banco de dados exposto | 🟡 | Etapa 7 |
 | 26 | Logs e auditoria | 🟡 | Média |
-| 27 | LGPD e retenção de dados | 🔴 | Etapa 2 |
+| 27 | LGPD e retenção de dados | 🟡 | Etapa 6 |
 
 Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
@@ -84,15 +84,13 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Recusar senha igual ou parecida com o e-mail.
 - Ver também tokens (14).
 
-## 6. IDOR (acesso a recurso de outra pessoa pelo id) — 🟡
+## 6. IDOR (acesso a recurso de outra pessoa pelo id) — ✅
 
-**Hoje:** todas as rotas com id são exclusivas do admin, e existe uma só transportadora, então não há como um usuário ver recurso de outro.
-
-**Regras para a etapa 2**
-- Motorista acessa entregas por `/me/deliveries`, e o filtro `driver_id = <id do token>` fica **na query SQL**, não no código depois de buscar.
-- Registrar evento confere se a entrega pertence ao motorista; se não pertencer, responde **404** (não 403, para não confirmar que o id existe).
+- Rotas de admin (`/drivers`, `/deliveries`, `/deliveries/{id}`) respondem 403 para motorista.
+- O motorista lista entregas por `/me/deliveries`, e o filtro `driver_id = <id do token>` fica **na query SQL** (`ListDriverDeliveries`): entrega de outro motorista nunca sai do banco.
+- `GET`/`POST /deliveries/{id}/events` conferem se a entrega pertence ao motorista; se não pertencer (ou não tiver motorista), respondem **404**, igual a uma entrega inexistente, para não confirmar que o id existe.
 - O rastreio público usa só o código aleatório (10 caracteres de um alfabeto de 32, cerca de 50 bits), nunca o id sequencial.
-- Teste automatizado para cada rota com id: motorista A tentando acessar entrega do motorista B.
+- Testes: unitários (`TestEvents_DriverOnlySeesOwnDeliveries`) e de integração pela API com Postgres real (`TestIntegration_DriversOnlyReachTheirOwnDeliveries`): motorista B tentando ler, alterar e listar entrega do motorista A.
 
 ## 7. Senhas no banco — ✅
 
@@ -108,13 +106,14 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Cada falha é registrada no log com o IP e uma impressão do e-mail (não o e-mail em si).
 - O bloqueio fica em memória; quando houver mais de uma instância da API, passa para o Redis.
 
-## 9. Bloquear durante envio (envio duplicado) — 🔴
+## 9. Bloquear durante envio (envio duplicado) — 🟡
 
-**Front (etapa 3):** botão desabilitado e com indicador de carregamento enquanto a requisição não volta.
+**Back (feito)**
+- `POST /deliveries` aceita o cabeçalho `Idempotency-Key`: a mesma chave do mesmo usuário em até 24h devolve a entrega criada na primeira vez (com `Idempotent-Replayed: true`) em vez de criar outra. A mesma chave com outro corpo responde 422.
+- A chave é reservada na mesma transação que cria a entrega, então duas requisições simultâneas com a mesma chave criam uma entrega só (teste de integração com 10 requisições em paralelo).
+- Eventos de status: transição repetida (ex.: `picked_up` → `picked_up`) responde 409, então reenviar não duplica histórico. Dois eventos simultâneos na mesma entrega: só um é aplicado, o outro recebe 409 (a troca de status confere o status anterior no `UPDATE`).
 
-**Back:** o front não basta (clique duplo, rede lenta, reenvio do navegador).
-- `POST /deliveries` aceitar cabeçalho `Idempotency-Key`: a mesma chave em até 24h devolve a mesma resposta em vez de criar outra entrega.
-- Eventos de status: transição repetida (ex.: `delivered` → `delivered`) responde 409, então reenviar não duplica histórico.
+**Front (etapa 3):** botão desabilitado e com indicador de carregamento enquanto a requisição não volta, e uma `Idempotency-Key` gerada por formulário.
 
 ## 10. CSRF — ⚪
 
@@ -147,6 +146,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Feito**
 - `govulncheck` rodado em 01/10/2026: **nenhuma vulnerabilidade alcançável pelo código**. Ele aponta o GO-2026-5932, no pacote `openpgp` de `golang.org/x/crypto`, que o projeto não usa (só usamos `bcrypt`).
+- Na etapa 2 o testcontainers trouxe o `moby/go-archive` v0.2.0 com o GO-2026-6253 (alcançável só pelo código de teste); atualizado para a v0.3.0, que corrige.
 - Imagem final distroless, sem shell nem gerenciador de pacotes, rodando como usuário não-root.
 
 **Falta**
@@ -172,18 +172,19 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Feito**
 - Limite global de 120 requisições por minuto por IP e de 10 por minuto no login, com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
+- Limite próprio de 30 por minuto por IP no rastreio público (`/public/tracking/{code}`), para dificultar a varredura de códigos.
 - O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23).
 
 **Falta**
-- Limite próprio do rastreio público (ex.: 30/min por IP) quando a rota existir (etapa 2).
 - Mover os contadores para o Redis quando houver mais de uma instância.
 
 ## 16. Dados sensíveis expostos — 🟡
 
-**Feito:** hash de senha nunca sai da API; `.env` fora do git; logs não registram corpo de requisição nem token.
+**Feito**
+- Hash de senha nunca sai da API; `.env` fora do git; logs não registram corpo de requisição nem token.
+- O rastreio público tem resposta própria (`delivery.Tracking`): código, status, histórico (status e horário) e primeiro nome do destinatário. **Não** inclui e-mail, endereço, sobrenome, motorista, ids internos nem as observações dos eventos (texto livre do motorista pode ter dado pessoal). Testado no serviço e pela API.
 
 **Falta**
-- Rastreio público (etapa 2) com resposta própria: status, histórico e primeiro nome do destinatário; **sem** e-mail, endereço completo ou dados do motorista.
 - HTTPS obrigatório em produção (HSTS).
 - Banco exposto (item 25).
 
@@ -243,12 +244,17 @@ Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, en
 
 **Falta**
 - Logar também 429, 403 e token inválido de forma pesquisável. Sem senha, token ou dado pessoal no log.
-- Auditoria de negócio: quem criou ou alterou cada entrega e cada mudança de status (a tabela de eventos da etapa 2 já cobre o status).
+- Auditoria de negócio da edição de entregas (`PATCH`). Mudanças de status já ficam em `delivery_events`, com quem fez e quando.
 - Alertas em produção para pico de falhas de login e de 5xx.
 
-## 27. LGPD e retenção de dados — 🔴
+## 27. LGPD e retenção de dados — 🟡
 
 O sistema guarda nome, e-mail e endereço de destinatários.
-- Definir por quanto tempo dados pessoais de entregas concluídas ficam guardados e anonimizar depois.
+
+**Feito**
+- Rastreio público sem dados pessoais além do primeiro nome (item 16).
+- O link público deixa de funcionar 30 dias depois de a entrega ser entregue ou da última falha (responde 404, como um código inexistente).
+
+**Falta**
+- Definir por quanto tempo dados pessoais de entregas concluídas ficam guardados no banco e anonimizar depois (etapa 6).
 - Coletar só o necessário (sem CPF, telefone etc. enquanto não houver uso).
-- Rastreio público sem dados pessoais (item 16).

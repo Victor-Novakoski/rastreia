@@ -21,3 +21,23 @@ UPDATE deliveries SET
     updated_at      = now()
 WHERE id = sqlc.arg('id')
 RETURNING *;
+
+-- name: ListDriverDeliveries :many
+SELECT * FROM deliveries
+WHERE driver_id = sqlc.arg('driver_id')::bigint
+  AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
+-- name: GetDeliveryByTrackingCode :one
+SELECT * FROM deliveries WHERE tracking_code = $1;
+
+-- SetDeliveryStatus only changes the row if the status is still the one the
+-- caller saw, so two concurrent events cannot both apply.
+-- name: SetDeliveryStatus :one
+UPDATE deliveries SET
+    status       = sqlc.arg('status'),
+    completed_at = sqlc.narg('completed_at'),
+    updated_at   = now()
+WHERE id = sqlc.arg('id') AND status = sqlc.arg('from_status')
+RETURNING *;

@@ -1,0 +1,138 @@
+package delivery_test
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/Victor-Novakoski/rastreia/internal/apperr"
+	"github.com/Victor-Novakoski/rastreia/internal/auth"
+	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/store"
+	"github.com/Victor-Novakoski/rastreia/internal/testdb"
+)
+
+// setup returns a service on a fresh database with one admin and one driver.
+func setup(t *testing.T) (*delivery.Service, *pgxpool.Pool, auth.Claims, auth.Claims) {
+	t.Helper()
+	pool := testdb.New(t)
+	q := store.New(pool)
+	ctx := context.Background()
+	a, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin})
+	require.NoError(t, err)
+	d, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Ana", Email: "ana@example.com", PasswordHash: "x", Role: auth.RoleDriver})
+	require.NoError(t, err)
+	return delivery.NewService(delivery.NewPGStore(pool)),
+		pool,
+		auth.Claims{UserID: a.ID, Role: auth.RoleAdmin},
+		auth.Claims{UserID: d.ID, Role: auth.RoleDriver}
+}
+
+func input(driverID int64) delivery.CreateInput {
+	return delivery.CreateInput{
+		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10", DriverID: &driverID,
+	}
+}
+
+func count(t *testing.T, pool *pgxpool.Pool, table string) int {
+	t.Helper()
+	var n int
+	require.NoError(t, pool.QueryRow(context.Background(), "SELECT count(*) FROM "+table).Scan(&n))
+	return n
+}
+
+func TestPG_JourneyAndTracking(t *testing.T) {
+	svc, _, admin, driver := setup(t)
+	ctx := context.Background()
+
+	d, err := svc.Create(ctx, admin.UserID, input(driver.UserID))
+	require.NoError(t, err)
+	for _, st := range []string{delivery.StatusPickedUp, delivery.StatusInTransit, delivery.StatusDelivered} {
+		_, err := svc.AddEvent(ctx, driver, d.ID, delivery.EventInput{Status: st})
+		require.NoError(t, err, st)
+	}
+
+	got, err := svc.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, delivery.StatusDelivered, got.Status)
+	assert.NotNil(t, got.CompletedAt)
+
+	tr, err := svc.Track(ctx, d.TrackingCode)
+	require.NoError(t, err)
+	assert.Equal(t, "Maria", tr.RecipientFirstName)
+	require.Len(t, tr.Events, 4)
+	assert.Equal(t, delivery.StatusPending, tr.Events[0].Status)
+
+	mine, err := svc.ListForDriver(ctx, driver.UserID, delivery.ListInput{Status: ptr(delivery.StatusDelivered)})
+	require.NoError(t, err)
+	assert.Len(t, mine, 1)
+}
+
+func TestPG_ConcurrentEventsApplyOnce(t *testing.T) {
+	svc, pool, admin, driver := setup(t)
+	ctx := context.Background()
+	d, err := svc.Create(ctx, admin.UserID, input(driver.UserID))
+	require.NoError(t, err)
+
+	const n = 10
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			_, errs[i] = svc.AddEvent(ctx, driver, d.ID, delivery.EventInput{Status: delivery.StatusPickedUp})
+		})
+	}
+	wg.Wait()
+
+	ok := 0
+	for _, err := range errs {
+		if err == nil {
+			ok++
+		} else {
+			assert.ErrorIs(t, err, apperr.ErrConflict)
+		}
+	}
+	assert.Equal(t, 1, ok, "exactly one of the simultaneous events wins")
+	assert.Equal(t, 2, count(t, pool, "delivery_events"), "pending + picked_up, no duplicates")
+}
+
+func TestPG_IdempotentCreateUnderConcurrency(t *testing.T) {
+	svc, pool, admin, driver := setup(t)
+	ctx := context.Background()
+
+	const n = 10
+	ids := make([]int64, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			d, _, err := svc.CreateIdempotent(ctx, admin.UserID, "retry-123", input(driver.UserID))
+			ids[i], errs[i] = d.ID, err
+		})
+	}
+	wg.Wait()
+
+	for i := range n {
+		require.NoError(t, errs[i])
+		assert.Equal(t, ids[0], ids[i])
+	}
+	assert.Equal(t, 1, count(t, pool, "deliveries"))
+	assert.Equal(t, 1, count(t, pool, "delivery_events"))
+}
+
+func TestPG_FailedTransactionLeavesNoTrace(t *testing.T) {
+	svc, pool, _, _ := setup(t)
+	// The first event references a user that does not exist, so its insert
+	// fails after the delivery row was written.
+	_, err := svc.Create(context.Background(), 999_999, delivery.CreateInput{
+		RecipientName: "Maria", RecipientEmail: "maria@example.com", Address: "Rua A",
+	})
+	require.Error(t, err)
+	assert.Equal(t, 0, count(t, pool, "deliveries"), "the delivery is rolled back with the event")
+}
+
+func ptr[T any](v T) *T { return &v }

@@ -1,4 +1,5 @@
-// Package delivery handles creating, listing and editing deliveries.
+// Package delivery handles deliveries: creating and editing them, their
+// status events and the public tracking page.
 package delivery
 
 import (
@@ -31,21 +32,33 @@ var statuses = []string{StatusPending, StatusPickedUp, StatusInTransit, StatusDe
 type Store interface {
 	CreateDelivery(ctx context.Context, arg store.CreateDeliveryParams) (store.Delivery, error)
 	GetDelivery(ctx context.Context, id int64) (store.Delivery, error)
+	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (store.Delivery, error)
 	ListDeliveries(ctx context.Context, arg store.ListDeliveriesParams) ([]store.Delivery, error)
+	ListDriverDeliveries(ctx context.Context, arg store.ListDriverDeliveriesParams) ([]store.Delivery, error)
 	UpdateDelivery(ctx context.Context, arg store.UpdateDeliveryParams) (store.Delivery, error)
+	SetDeliveryStatus(ctx context.Context, arg store.SetDeliveryStatusParams) (store.Delivery, error)
+	CreateDeliveryEvent(ctx context.Context, arg store.CreateDeliveryEventParams) (store.DeliveryEvent, error)
+	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]store.DeliveryEvent, error)
+	DeleteExpiredIdempotencyKey(ctx context.Context, arg store.DeleteExpiredIdempotencyKeyParams) error
+	ReserveIdempotencyKey(ctx context.Context, arg store.ReserveIdempotencyKeyParams) (store.IdempotencyKey, error)
+	GetIdempotencyKey(ctx context.Context, arg store.GetIdempotencyKeyParams) (store.IdempotencyKey, error)
+	SetIdempotencyKeyDelivery(ctx context.Context, arg store.SetIdempotencyKeyDeliveryParams) error
 	GetUserByID(ctx context.Context, id int64) (store.User, error)
+	// InTx runs fn in a database transaction, passing a Store bound to it.
+	InTx(ctx context.Context, fn func(Store) error) error
 }
 
 type Delivery struct {
-	ID             int64     `json:"id"`
-	TrackingCode   string    `json:"tracking_code"`
-	RecipientName  string    `json:"recipient_name"`
-	RecipientEmail string    `json:"recipient_email"`
-	Address        string    `json:"address"`
-	Status         string    `json:"status"`
-	DriverID       *int64    `json:"driver_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             int64      `json:"id"`
+	TrackingCode   string     `json:"tracking_code"`
+	RecipientName  string     `json:"recipient_name"`
+	RecipientEmail string     `json:"recipient_email"`
+	Address        string     `json:"address"`
+	Status         string     `json:"status"`
+	DriverID       *int64     `json:"driver_id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	CompletedAt    *time.Time `json:"completed_at"`
 }
 
 func fromStore(d store.Delivery) Delivery {
@@ -77,13 +90,27 @@ type ListInput struct {
 type Service struct {
 	store   Store
 	newCode func() (string, error)
+	now     func() time.Time
 }
 
 func NewService(s Store) *Service {
-	return &Service{store: s, newCode: NewTrackingCode}
+	return &Service{store: s, newCode: NewTrackingCode, now: time.Now}
 }
 
-func (s *Service) Create(ctx context.Context, in CreateInput) (Delivery, error) {
+// Create adds a delivery and its first "pending" event, recorded as made by actorID.
+func (s *Service) Create(ctx context.Context, actorID int64, in CreateInput) (Delivery, error) {
+	if err := s.validateCreate(ctx, &in); err != nil {
+		return Delivery{}, err
+	}
+	var out Delivery
+	err := s.retryOnCodeCollision(ctx, func(q Store) (err error) {
+		out, err = s.insert(ctx, q, actorID, in)
+		return err
+	})
+	return out, err
+}
+
+func (s *Service) validateCreate(ctx context.Context, in *CreateInput) error {
 	in.RecipientName = strings.TrimSpace(in.RecipientName)
 	in.RecipientEmail = strings.ToLower(strings.TrimSpace(in.RecipientEmail))
 	in.Address = strings.TrimSpace(in.Address)
@@ -96,32 +123,46 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Delivery, error) 
 	if in.DriverID != nil {
 		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
 	}
-	if err := v.Err(); err != nil {
-		return Delivery{}, err
-	}
+	return v.Err()
+}
 
-	// A collision between random codes is very unlikely, but retrying is cheap.
+// retryOnCodeCollision runs fn in a transaction, starting over with a new
+// one when a tracking code is already taken. A collision between random
+// codes is very unlikely, but retrying is cheap; it cannot happen inside the
+// same transaction because Postgres aborts it on the error.
+func (s *Service) retryOnCodeCollision(ctx context.Context, fn func(q Store) error) error {
 	for range 3 {
-		code, err := s.newCode()
-		if err != nil {
-			return Delivery{}, err
-		}
-		d, err := s.store.CreateDelivery(ctx, store.CreateDeliveryParams{
-			TrackingCode:   code,
-			RecipientName:  in.RecipientName,
-			RecipientEmail: in.RecipientEmail,
-			Address:        in.Address,
-			DriverID:       in.DriverID,
-		})
+		err := s.store.InTx(ctx, fn)
 		if isUniqueViolation(err) {
 			continue
 		}
-		if err != nil {
-			return Delivery{}, err
-		}
-		return fromStore(d), nil
+		return err
 	}
-	return Delivery{}, errors.New("could not generate a unique tracking code")
+	return errors.New("could not generate a unique tracking code")
+}
+
+func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateInput) (Delivery, error) {
+	code, err := s.newCode()
+	if err != nil {
+		return Delivery{}, err
+	}
+	d, err := q.CreateDelivery(ctx, store.CreateDeliveryParams{
+		TrackingCode:   code,
+		RecipientName:  in.RecipientName,
+		RecipientEmail: in.RecipientEmail,
+		Address:        in.Address,
+		DriverID:       in.DriverID,
+	})
+	if err != nil {
+		return Delivery{}, err
+	}
+	_, err = q.CreateDeliveryEvent(ctx, store.CreateDeliveryEventParams{
+		DeliveryID: d.ID, Status: d.Status, CreatedBy: &actorID,
+	})
+	if err != nil {
+		return Delivery{}, err
+	}
+	return fromStore(d), nil
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (Delivery, error) {
@@ -133,30 +174,52 @@ func (s *Service) Get(ctx context.Context, id int64) (Delivery, error) {
 }
 
 func (s *Service) List(ctx context.Context, in ListInput) ([]Delivery, error) {
+	if err := in.validate(); err != nil {
+		return nil, err
+	}
+	limit, offset := in.page()
+	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
+		Status: in.Status, Limit: limit, Offset: offset,
+	})
+	return fromStoreList(rows), err
+}
+
+// ListForDriver lists only the deliveries assigned to driverID; the filter
+// is part of the query, so other drivers' deliveries never leave the database.
+func (s *Service) ListForDriver(ctx context.Context, driverID int64, in ListInput) ([]Delivery, error) {
+	if err := in.validate(); err != nil {
+		return nil, err
+	}
+	limit, offset := in.page()
+	rows, err := s.store.ListDriverDeliveries(ctx, store.ListDriverDeliveriesParams{
+		DriverID: driverID, Status: in.Status, Limit: limit, Offset: offset,
+	})
+	return fromStoreList(rows), err
+}
+
+func (in ListInput) validate() error {
 	v := apperr.Validator{}
 	if in.Status != nil {
 		v.Check(validStatus(*in.Status), "status", "must be one of "+strings.Join(statuses, ", "))
 	}
-	if err := v.Err(); err != nil {
-		return nil, err
-	}
+	return v.Err()
+}
+
+// page turns page/size into limit/offset, falling back to 20 items per page.
+func (in ListInput) page() (limit, offset int32) {
 	page, size := max(in.Page, 1), in.Size
 	if size <= 0 || size > 100 {
 		size = 20
 	}
-	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
-		Status: in.Status,
-		Limit:  int32(size),
-		Offset: int32((page - 1) * size),
-	})
-	if err != nil {
-		return nil, err
-	}
+	return int32(size), int32((page - 1) * size)
+}
+
+func fromStoreList(rows []store.Delivery) []Delivery {
 	out := make([]Delivery, len(rows))
 	for i, d := range rows {
 		out[i] = fromStore(d)
 	}
-	return out, nil
+	return out
 }
 
 func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Delivery, error) {

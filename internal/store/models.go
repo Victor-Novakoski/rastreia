@@ -18,6 +18,24 @@ type Delivery struct {
 	DriverID       *int64
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	CompletedAt    *time.Time
+}
+
+type DeliveryEvent struct {
+	ID         int64
+	DeliveryID int64
+	Status     string
+	Note       *string
+	CreatedBy  *int64
+	CreatedAt  time.Time
+}
+
+type IdempotencyKey struct {
+	UserID      int64
+	Key         string
+	RequestHash string
+	DeliveryID  *int64
+	CreatedAt   time.Time
 }
 
 type User struct {

@@ -2,13 +2,13 @@
 
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
-> Projeto em construção. Esta é a etapa 1: a base da API em Go.
+> Projeto em construção. Etapas prontas: base da API, segurança da base e eventos de status com rastreio público. Próxima: front-end.
 
 ## Stack
 
 - **API:** Go, chi, pgx + sqlc, golang-migrate, Viper, JWT
 - **Banco:** PostgreSQL
-- **Testes:** testing + testify
+- **Testes:** testing + testify; integração com Postgres real via testcontainers
 - **Infra:** Docker e Docker Compose
 
 Próximas etapas: eventos de status e rastreio público, front-end em React + TypeScript, CI no GitHub Actions, tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
@@ -56,7 +56,8 @@ air
 ## Testes
 
 ```bash
-make test
+make test        # unitários + integração (sobe um Postgres temporário no Docker)
+make test-short  # só os unitários, sem Docker
 ```
 
 ## Exemplo de uso
@@ -70,9 +71,20 @@ TOKEN=$(curl -s localhost:8080/auth/login \
 curl -s localhost:8080/drivers -H "Authorization: Bearer $TOKEN" \
   -d '{"name":"João","email":"joao@rastreia.dev","password":"motorista1"}'
 
-# cria uma entrega para ele
-curl -s localhost:8080/deliveries -H "Authorization: Bearer $TOKEN" \
+# cria uma entrega para ele (a chave evita duplicar a entrega se a requisição for repetida)
+curl -s localhost:8080/deliveries -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: pedido-123" \
   -d '{"recipient_name":"Maria","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":2}'
+
+# o motorista entra e vê as entregas dele
+DRIVER=$(curl -s localhost:8080/auth/login \
+  -d '{"email":"joao@rastreia.dev","password":"motorista1"}' | jq -r .token)
+curl -s localhost:8080/me/deliveries -H "Authorization: Bearer $DRIVER"
+
+# e atualiza o status
+curl -s localhost:8080/deliveries/1/events -H "Authorization: Bearer $DRIVER" -d '{"status":"picked_up"}'
+
+# o cliente acompanha pelo código de rastreio, sem login
+curl -s localhost:8080/public/tracking/RS7K2M9QXA4P
 ```
 
 A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml) e também é servida em `GET /openapi.yaml`.
@@ -86,6 +98,9 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | GET, POST | `/drivers` | admin |
 | GET, POST | `/deliveries` | admin |
 | GET, PATCH | `/deliveries/{id}` | admin |
+| GET, POST | `/deliveries/{id}/events` | admin e motorista dono da entrega |
+| GET | `/me/deliveries` | motorista |
+| GET | `/public/tracking/{code}` | público (30 req/min por IP) |
 
 ## Estrutura
 
@@ -97,13 +112,14 @@ internal/
   config/             configuração por variáveis de ambiente (Viper)
   database/           conexão, migrations e queries SQL
   store/              código gerado pelo sqlc
-  delivery/           regras e handlers de entregas
+  delivery/           entregas, eventos de status, rastreio público e idempotência
   user/               motoristas e admin inicial
   httpx/, apperr/     helpers de HTTP e erros
+  testdb/             Postgres temporário para os testes de integração
 ```
 
 ## Decisões
 
 - **sqlc em vez de ORM:** as queries ficam em SQL puro e o Go é gerado com tipos, então erro de SQL aparece na hora de gerar e não em produção.
-- **Status não muda pelo PATCH:** cada mudança de status vai virar um evento com histórico, que alimenta o rastreio público e as notificações.
+- **Status não muda pelo PATCH:** cada mudança de status é um evento com histórico (`delivery_events`), que alimenta o rastreio público e, depois, as notificações.
 - **Código de rastreio sem 0/O e 1/I:** fica fácil de ditar por telefone.

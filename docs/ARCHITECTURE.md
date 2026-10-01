@@ -61,6 +61,7 @@ handler  ──►  service  ──►  Store (interface)  ──►  store (sql
 - **Handler:** só traduz HTTP. Faz o decode com `httpx.Decode`, chama o service e responde com `httpx.JSON` ou `httpx.WriteError`. Não tem regra de negócio.
 - **Service:** valida e normaliza a entrada (`apperr.Validator`), aplica as regras e devolve tipos próprios do domínio (ex.: `user.User`, que nunca carrega o hash da senha).
 - **Store:** interface pequena declarada no próprio pacote do service, com só os métodos que ele usa. Nos testes, é trocada por um fake em memória.
+- **Transações:** quando uma operação escreve em mais de uma tabela, o service usa `Store.InTx`, que recebe um `Store` ligado à transação (em `delivery`, implementado por `PGStore` com `pgx.BeginFunc`). Erro dentro da função desfaz tudo.
 - **store (sqlc):** gerado a partir de `internal/database/queries/*.sql`. Todo acesso ao banco passa por aqui, sempre com parâmetros.
 
 ## Fluxo de uma requisição autenticada
@@ -82,7 +83,9 @@ handler  ──►  service  ──►  Store (interface)  ──►  store (sql
 
 - Migrations em `internal/database/migrations`, embutidas com `go:embed` e aplicadas automaticamente quando a API sobe.
 - Uma migration nunca é editada depois de ir para a `main`: cria-se outra.
-- Tabelas atuais: `users` e `deliveries`. A próxima é `delivery_events` (histórico de status).
+- Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
+- A mudança de status usa concorrência otimista: o `UPDATE` só altera a linha se o status ainda for o que o service leu (`WHERE status = from_status`); se outro evento chegou antes, responde 409.
+- `deliveries.completed_at` guarda quando a entrega foi entregue ou falhou pela última vez; o rastreio público expira 30 dias depois.
 - O status da entrega é validado também por `CHECK` no banco, não só na aplicação.
 
 ## Configuração
@@ -99,4 +102,4 @@ Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_
 
 - `go test -race ./...` (`make test`).
 - Services testados com fakes do `Store`; handlers testados com `httptest`.
-- Testes de integração com Postgres real entram quando a etapa 2 tiver regras que dependem do banco (transições de status).
+- Testes de integração com Postgres real (testcontainers): `internal/testdb` sobe um container por pacote de teste e cria um banco novo, já migrado, para cada teste. Cobrem transações, concorrência (eventos e idempotência em paralelo) e a API inteira com IDOR. São pulados com `-short` (`make test-short`) ou sem Docker.

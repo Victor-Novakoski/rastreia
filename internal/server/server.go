@@ -29,8 +29,9 @@ type Options struct {
 	CORSOrigins []string
 	TrustProxy  bool
 	// Requests per minute per IP. Zero uses the defaults.
-	RateLimit      int
-	LoginRateLimit int
+	RateLimit         int
+	LoginRateLimit    int
+	TrackingRateLimit int
 }
 
 func New(d Deps) http.Handler {
@@ -40,6 +41,9 @@ func New(d Deps) http.Handler {
 	}
 	if opts.LoginRateLimit == 0 {
 		opts.LoginRateLimit = 10
+	}
+	if opts.TrackingRateLimit == 0 {
+		opts.TrackingRateLimit = 30
 	}
 
 	r := chi.NewRouter()
@@ -65,6 +69,8 @@ func New(d Deps) http.Handler {
 	})
 
 	r.With(rateLimit(opts.LoginRateLimit, opts.TrustProxy)).Post("/auth/login", d.Auth.Login)
+	// Its own, tighter limit makes guessing tracking codes slow.
+	r.With(rateLimit(opts.TrackingRateLimit, opts.TrustProxy)).Get("/public/tracking/{code}", d.Deliveries.Track)
 
 	r.Group(func(r chi.Router) {
 		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
@@ -76,6 +82,21 @@ func New(d Deps) http.Handler {
 		r.Post("/deliveries", d.Deliveries.Create)
 		r.Get("/deliveries/{id}", d.Deliveries.Get)
 		r.Patch("/deliveries/{id}", d.Deliveries.Update)
+	})
+
+	// Drivers reach only their own deliveries here; the service answers 404
+	// for anyone else's.
+	r.Group(func(r chi.Router) {
+		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin, auth.RoleDriver))
+
+		r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
+		r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleDriver))
+
+		r.Get("/me/deliveries", d.Deliveries.ListMine)
 	})
 
 	return r

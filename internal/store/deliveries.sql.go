@@ -7,12 +7,13 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const createDelivery = `-- name: CreateDelivery :one
 INSERT INTO deliveries (tracking_code, recipient_name, recipient_email, address, driver_id)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
 `
 
 type CreateDeliveryParams struct {
@@ -42,12 +43,13 @@ func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) 
 		&i.DriverID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const getDelivery = `-- name: GetDelivery :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at FROM deliveries WHERE id = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries WHERE id = $1
 `
 
 func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
@@ -63,12 +65,35 @@ func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
 		&i.DriverID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const getDeliveryByTrackingCode = `-- name: GetDeliveryByTrackingCode :one
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries WHERE tracking_code = $1
+`
+
+func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error) {
+	row := q.db.QueryRow(ctx, getDeliveryByTrackingCode, trackingCode)
+	var i Delivery
+	err := row.Scan(
+		&i.ID,
+		&i.TrackingCode,
+		&i.RecipientName,
+		&i.RecipientEmail,
+		&i.Address,
+		&i.Status,
+		&i.DriverID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
 const listDeliveries = `-- name: ListDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries
 WHERE $1::text IS NULL OR status = $1::text
 ORDER BY created_at DESC, id DESC
 LIMIT $3 OFFSET $2
@@ -99,6 +124,7 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 			&i.DriverID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -110,6 +136,98 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 	return items, nil
 }
 
+const listDriverDeliveries = `-- name: ListDriverDeliveries :many
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries
+WHERE driver_id = $1::bigint
+  AND ($2::text IS NULL OR status = $2::text)
+ORDER BY created_at DESC, id DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListDriverDeliveriesParams struct {
+	DriverID int64
+	Status   *string
+	Offset   int32
+	Limit    int32
+}
+
+func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, listDriverDeliveries,
+		arg.DriverID,
+		arg.Status,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Delivery
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.TrackingCode,
+			&i.RecipientName,
+			&i.RecipientEmail,
+			&i.Address,
+			&i.Status,
+			&i.DriverID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setDeliveryStatus = `-- name: SetDeliveryStatus :one
+UPDATE deliveries SET
+    status       = $1,
+    completed_at = $2,
+    updated_at   = now()
+WHERE id = $3 AND status = $4
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
+`
+
+type SetDeliveryStatusParams struct {
+	Status      string
+	CompletedAt *time.Time
+	ID          int64
+	FromStatus  string
+}
+
+// SetDeliveryStatus only changes the row if the status is still the one the
+// caller saw, so two concurrent events cannot both apply.
+func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error) {
+	row := q.db.QueryRow(ctx, setDeliveryStatus,
+		arg.Status,
+		arg.CompletedAt,
+		arg.ID,
+		arg.FromStatus,
+	)
+	var i Delivery
+	err := row.Scan(
+		&i.ID,
+		&i.TrackingCode,
+		&i.RecipientName,
+		&i.RecipientEmail,
+		&i.Address,
+		&i.Status,
+		&i.DriverID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const updateDelivery = `-- name: UpdateDelivery :one
 UPDATE deliveries SET
     recipient_name  = coalesce($1, recipient_name),
@@ -118,7 +236,7 @@ UPDATE deliveries SET
     driver_id       = coalesce($4, driver_id),
     updated_at      = now()
 WHERE id = $5
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
 `
 
 type UpdateDeliveryParams struct {
@@ -148,6 +266,7 @@ func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) 
 		&i.DriverID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }

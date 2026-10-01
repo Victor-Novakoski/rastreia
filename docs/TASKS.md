@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 2 — Eventos e rastreio público**
+**Etapa atual: 3 — Front-end**
 
 ## Etapa 1 — Base da API ✅
 
@@ -31,16 +31,17 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Falha de login no log, sem o e-mail em claro (#26)
 - [ ] Logar também 401, 403 e 429 (#26)
 
-## Etapa 2 — Eventos e rastreio público
+## Etapa 2 — Eventos e rastreio público ✅
 
-- [ ] Responder as perguntas em aberto do [PRD](PRD.md)
-- [ ] Tabela `delivery_events` e regras de transição de status
-- [ ] `GET /me/deliveries` para o motorista, filtrado na query (#6)
-- [ ] `POST /deliveries/{id}/events` com checagem de dono e 409 para transição inválida (#6, #9)
-- [ ] `GET /public/tracking/{code}` sem dados pessoais e com rate limit próprio (#15, #16, #27)
-- [ ] Testes de IDOR: motorista A tentando acessar entrega do motorista B (#6)
-- [ ] Testes de integração com Postgres real
-- [ ] `Idempotency-Key` no `POST /deliveries` (#9)
+- [x] Responder as perguntas em aberto do [PRD](PRD.md)
+- [x] Tabela `delivery_events` e regras de transição de status (com histórico das entregas existentes)
+- [x] `GET /me/deliveries` para o motorista, filtrado na query (#6)
+- [x] `POST /deliveries/{id}/events` com checagem de dono, 409 para transição inválida e concorrência otimista (#6, #9)
+- [x] `GET /deliveries/{id}/events` com o histórico, para admin e motorista dono
+- [x] `GET /public/tracking/{code}` sem dados pessoais, expirando 30 dias após a conclusão e com rate limit de 30/min (#15, #16, #27)
+- [x] Testes de IDOR: motorista A tentando acessar entrega do motorista B (#6)
+- [x] Testes de integração com Postgres real (testcontainers)
+- [x] `Idempotency-Key` no `POST /deliveries` (#9)
 
 ## Etapa 3 — Front-end (React + TypeScript)
 

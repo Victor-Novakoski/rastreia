@@ -10,12 +10,26 @@ import (
 
 type Querier interface {
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
+	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteExpiredIdempotencyKey(ctx context.Context, arg DeleteExpiredIdempotencyKeyParams) error
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
+	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
+	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
+	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
+	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListUsersByRole(ctx context.Context, role string) ([]User, error)
+	// ReserveIdempotencyKey returns no row when the key already exists. A
+	// concurrent request with the same key waits here until the first one
+	// commits or rolls back.
+	ReserveIdempotencyKey(ctx context.Context, arg ReserveIdempotencyKeyParams) (IdempotencyKey, error)
+	// SetDeliveryStatus only changes the row if the status is still the one the
+	// caller saw, so two concurrent events cannot both apply.
+	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
+	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
 }
 

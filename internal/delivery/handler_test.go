@@ -10,11 +10,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Victor-Novakoski/rastreia/internal/auth"
 )
 
 func newTestRouter() http.Handler {
 	h := NewHandler(NewService(newFakeStore()))
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(auth.WithClaims(r.Context(), admin)))
+		})
+	})
 	r.Get("/deliveries", h.List)
 	r.Post("/deliveries", h.Create)
 	r.Get("/deliveries/{id}", h.Get)

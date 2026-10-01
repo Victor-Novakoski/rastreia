@@ -34,8 +34,8 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 	return cors.Handler(cors.Options{
 		AllowedOrigins: origins,
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions},
-		AllowedHeaders: []string{"Authorization", "Content-Type"},
-		ExposedHeaders: []string{"Retry-After"},
+		AllowedHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key"},
+		ExposedHeaders: []string{"Retry-After", "Idempotent-Replayed"},
 		MaxAge:         600,
 	})
 }

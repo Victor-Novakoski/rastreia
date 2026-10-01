@@ -50,6 +50,11 @@ components:
         driver_id: { type: integer, format: int64, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the delivery last became delivered or failed
     Status:
       type: string
       enum: [pending, picked_up, in_transit, delivered, failed]
@@ -61,6 +66,39 @@ components:
         recipient_email: { type: string, format: email }
         address: { type: string }
         driver_id: { type: integer, format: int64 }
+    Event:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        delivery_id: { type: integer, format: int64 }
+        status: { $ref: "#/components/schemas/Status" }
+        note: { type: string, nullable: true }
+        created_by: { type: integer, format: int64, nullable: true, description: null for events written by the system }
+        created_at: { type: string, format: date-time }
+    CreateEvent:
+      type: object
+      required: [status]
+      description: |
+        Allowed transitions: pending → picked_up | failed; picked_up → in_transit | failed;
+        in_transit → delivered | failed; failed → in_transit. delivered is final.
+      properties:
+        status: { $ref: "#/components/schemas/Status" }
+        note: { type: string, maxLength: 500, description: Required when status is failed }
+    Tracking:
+      type: object
+      description: Public view of a delivery. No e-mail, address, last name, driver or notes.
+      properties:
+        tracking_code: { type: string, example: RS7K2M9QXA4P }
+        status: { $ref: "#/components/schemas/Status" }
+        recipient_first_name: { type: string, example: Maria }
+        updated_at: { type: string, format: date-time }
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { $ref: "#/components/schemas/Status" }
+              created_at: { type: string, format: date-time }
     UpdateDelivery:
       type: object
       description: Only the fields sent are changed. Status changes through delivery events.
@@ -170,14 +208,24 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/Invalid" }
     post:
-      summary: Create a delivery (a tracking code is generated)
+      summary: Create a delivery (a tracking code and a first "pending" event are generated)
       security: [{ bearer: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: |
+            Optional, 1 to 255 visible ASCII characters. Retrying with the same key within 24 hours
+            returns the delivery created the first time, with Idempotent-Replayed: true, instead of
+            creating another. The same key with a different body is rejected with 422.
+          schema: { type: string, maxLength: 255 }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/CreateDelivery" } } }
       responses:
         "201":
-          description: Created
+          description: Created (or replayed, with an Idempotency-Key already used)
+          headers:
+            Idempotent-Replayed: { schema: { type: string, enum: ["true"] } }
           content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -210,3 +258,60 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
+  /deliveries/{id}/events:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Status history of a delivery, oldest first
+      description: Admins see every delivery; drivers only those assigned to them (404 for any other).
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Events
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Event" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Change the status of a delivery
+      description: Admins may change any delivery; drivers only those assigned to them (404 for any other).
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateEvent" } } }
+      responses:
+        "201":
+          description: Status changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Transition not allowed, or the status changed meanwhile }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /me/deliveries:
+    get:
+      summary: Deliveries assigned to the driver making the request, newest first
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Deliveries
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Delivery" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /public/tracking/{code}:
+    get:
+      summary: Public tracking page data (no login)
+      description: |
+        Unknown, malformed and expired codes answer 404. The link expires 30 days after the delivery
+        is delivered or last failed. Limited to 30 requests per minute per IP.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+      responses:
+        "200":
+          description: Tracking
+          content: { application/json: { schema: { $ref: "#/components/schemas/Tracking" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }

@@ -64,7 +64,7 @@ func run() error {
 			Tokens:     tokens,
 			Auth:       auth.NewHandler(queries, tokens, auth.NewLoginGuard()),
 			Users:      user.NewHandler(users),
-			Deliveries: delivery.NewHandler(delivery.NewService(queries)),
+			Deliveries: delivery.NewHandler(delivery.NewService(delivery.NewPGStore(pool))),
 			Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
 			Options: server.Options{
 				Production:  cfg.IsProduction(),
