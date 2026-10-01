@@ -27,6 +27,8 @@ A API sobe em `http://localhost:8080` e já cria um admin de teste:
 | --- | --- |
 | admin@rastreia.dev | admin12345 |
 
+Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, suba o banco em outra porta com `DB_PORT=5433 docker compose up --build`.
+
 Para rodar a API fora do Docker:
 
 ```bash
