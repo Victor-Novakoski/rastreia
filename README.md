@@ -75,6 +75,10 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | GET, POST | `/deliveries` | admin |
 | GET, PATCH | `/deliveries/{id}` | admin |
 
+## Documentação
+
+Produto, arquitetura, regras, design, tarefas, segurança e decisões ficam em [`docs/`](docs/).
+
 ## Estrutura
 
 ```
