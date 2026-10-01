@@ -79,8 +79,8 @@ O status só muda por **eventos** registrados pelo motorista (ou admin), nunca p
 
 Pedir algo desta lista significa primeiro mudar este documento.
 
-## Perguntas em aberto
+## Decisões sobre perguntas que estavam em aberto
 
-- `failed` pode voltar para `in_transit` (nova tentativa) ou vira uma nova entrega?
-- Motorista pode registrar foto como comprovante de entrega? Se sim, entra a parte de upload em [SECURITY.md](SECURITY.md).
-- Quanto tempo o link público continua acessível depois de `delivered`?
+- **Entrega com falha** (`failed`) pode voltar para `in_transit` numa nova tentativa; não vira uma entrega nova. O histórico guarda as duas tentativas.
+- **Foto de comprovante** fica fora da v1. Se entrar depois, segue as regras de upload do [SECURITY.md](SECURITY.md).
+- **Link público** continua acessível por 30 dias depois de `delivered` ou do último `failed`; depois responde como "não encontrada".
