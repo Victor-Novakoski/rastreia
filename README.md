@@ -13,6 +13,18 @@ Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o mot
 
 Próximas etapas: eventos de status e rastreio público, front-end em React + TypeScript, CI no GitHub Actions, tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
 
+## Documentação
+
+| Documento | Conteúdo |
+| --- | --- |
+| [PRD](docs/PRD.md) | O que o produto é, requisitos e o que está fora de escopo |
+| [Arquitetura](docs/ARCHITECTURE.md) | Camadas, pastas, fluxo de requisição e visão alvo |
+| [Regras](docs/RULES.md) | Regras de código, testes, git e definição de pronto |
+| [Design](docs/DESIGN.md) | Convenções da API e das interfaces |
+| [Segurança](docs/SECURITY.md) | Como cada risco é tratado e o que falta |
+| [Tarefas](docs/TASKS.md) | Backlog por etapa |
+| [Memória](docs/MEMORY.md) | Decisões tomadas e armadilhas conhecidas |
+
 ## Rodando local
 
 Precisa só de Docker.
