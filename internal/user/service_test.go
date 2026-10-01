@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -83,7 +84,7 @@ func TestEnsureAdmin_IsIdempotent(t *testing.T) {
 
 func TestCreateDriver_PasswordPolicy(t *testing.T) {
 	svc := NewService(&fakeStore{})
-	for _, pw := range []string{"curta123", "1234567890", "Senha12345"} {
+	for _, pw := range []string{"curta123", "1234567890", "Senha12345", strings.Repeat("a", 73)} {
 		_, err := svc.CreateDriver(context.Background(), CreateInput{Name: "Ana", Email: "ana@example.com", Password: pw})
 		var verr *apperr.ValidationError
 		require.ErrorAs(t, err, &verr, pw)

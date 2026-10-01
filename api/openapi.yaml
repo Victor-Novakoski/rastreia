@@ -37,7 +37,7 @@ components:
       properties:
         name: { type: string }
         email: { type: string, format: email }
-        password: { type: string, minLength: 8 }
+        password: { type: string, minLength: 10, description: At most 72 bytes; common passwords are refused }
     Delivery:
       type: object
       properties:
@@ -82,6 +82,11 @@ components:
     NotFound:
       description: Not found
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TooManyRequests:
+      description: Too many requests or failed logins; wait for Retry-After seconds
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Invalid:
       description: Validation failed
       content: { application/json: { schema: { $ref: "#/components/schemas/ValidationError" } } }
@@ -123,6 +128,7 @@ paths:
                   role: { type: string, enum: [admin, driver] }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /drivers:
     get:
       summary: List drivers

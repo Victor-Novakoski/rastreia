@@ -42,6 +42,11 @@ type CreateInput struct {
 	Password string `json:"password"`
 }
 
+const (
+	maxName  = 120
+	maxEmail = 254
+)
+
 type Service struct {
 	store Store
 }
@@ -88,9 +93,10 @@ func (s *Service) create(ctx context.Context, in CreateInput, role string, rejec
 
 	v := apperr.Validator{}
 	v.Check(in.Name != "", "name", "is required")
-	v.Check(validEmail(in.Email), "email", "must be a valid e-mail")
+	v.Check(len(in.Name) <= maxName, "name", "must have at most 120 characters")
+	v.Check(len(in.Email) <= maxEmail && validEmail(in.Email), "email", "must be a valid e-mail")
 	problem := auth.PasswordProblem(in.Password)
-	if !rejectCommon && len([]rune(in.Password)) >= auth.MinPasswordLength {
+	if !rejectCommon && problem == "is too common" {
 		problem = ""
 	}
 	v.Check(problem == "", "password", problem)

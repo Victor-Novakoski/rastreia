@@ -2,7 +2,11 @@ package auth
 
 import "strings"
 
-const MinPasswordLength = 10
+const (
+	MinPasswordLength = 10
+	// bcrypt only uses the first 72 bytes and errors on longer input.
+	MaxPasswordBytes = 72
+)
 
 // commonPasswords holds passwords that show up at the top of leaked lists
 // and still pass the length rule.
@@ -19,6 +23,9 @@ var commonPasswords = map[string]bool{
 func PasswordProblem(password string) string {
 	if len([]rune(password)) < MinPasswordLength {
 		return "must have at least 10 characters"
+	}
+	if len(password) > MaxPasswordBytes {
+		return "must have at most 72 bytes"
 	}
 	if commonPasswords[strings.ToLower(password)] {
 		return "is too common"

@@ -92,6 +92,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Delivery, error) 
 	v.Check(in.RecipientName != "", "recipient_name", "is required")
 	v.Check(validEmail(in.RecipientEmail), "recipient_email", "must be a valid e-mail")
 	v.Check(in.Address != "", "address", "is required")
+	checkLengths(v, &in.RecipientName, &in.RecipientEmail, &in.Address)
 	if in.DriverID != nil {
 		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
 	}
@@ -172,6 +173,7 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 		*in.Address = strings.TrimSpace(*in.Address)
 		v.Check(*in.Address != "", "address", "cannot be empty")
 	}
+	checkLengths(v, in.RecipientName, in.RecipientEmail, in.Address)
 	if in.DriverID != nil {
 		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
 	}
@@ -190,6 +192,25 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 		return Delivery{}, notFound(err)
 	}
 	return fromStore(d), nil
+}
+
+const (
+	maxName    = 120
+	maxEmail   = 254
+	maxAddress = 300
+)
+
+// checkLengths caps free-text fields; nil means the field was not sent.
+func checkLengths(v apperr.Validator, name, email, address *string) {
+	if name != nil {
+		v.Check(len(*name) <= maxName, "recipient_name", "must have at most 120 characters")
+	}
+	if email != nil {
+		v.Check(len(*email) <= maxEmail, "recipient_email", "must be a valid e-mail")
+	}
+	if address != nil {
+		v.Check(len(*address) <= maxAddress, "address", "must have at most 300 characters")
+	}
 }
 
 func (s *Service) isDriver(ctx context.Context, id int64) bool {

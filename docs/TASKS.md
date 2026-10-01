@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 1.5 — Segurança da base**
+**Etapa atual: 2 — Eventos e rastreio público**
 
 ## Etapa 1 — Base da API ✅
 
@@ -15,21 +15,21 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Hot reload com air (no Docker e direto na máquina)
 - [x] Documentação em `docs/`
 
-## Etapa 1.5 — Segurança da base
+## Etapa 1.5 — Segurança da base ✅
 
-Prioridade alta:
-- [ ] Só confiar em `X-Forwarded-For` vindo de proxies conhecidos (`TRUSTED_PROXIES`) (#23)
-- [ ] Rate limit global por IP e específico no login, com 429 e `Retry-After` (#8, #15)
-- [ ] Tempo constante no login para e-mail inexistente (#24)
-- [ ] Senha: máximo de 72 bytes com 422 em vez de 500; recusar senhas óbvias (#3, #5)
-- [ ] Tamanho máximo para os campos de texto (#3)
-- [ ] `APP_ENV=production` recusa `JWT_SECRET` e `ADMIN_PASSWORD` padrão (#1, #5)
-
-Prioridade média:
-- [ ] Middleware de headers de segurança (#21)
-- [ ] `ReadTimeout`, `WriteTimeout` e `IdleTimeout` no servidor (#22)
-- [ ] Postgres do compose publicado só em `127.0.0.1` (#25)
-- [ ] Log estruturado de eventos de segurança (falha de login, 401, 403, 429) (#26)
+- [x] Só confiar em `X-Forwarded-For` com `TRUST_PROXY=true` (atrás do load balancer) (#23)
+- [x] Rate limit global por IP e específico no login, com 429 e `Retry-After` (#8, #15)
+- [x] Bloqueio progressivo por e-mail depois de 5 senhas erradas (#8)
+- [x] Tempo constante no login para e-mail inexistente (#24)
+- [x] Senha: mínimo 10, máximo 72 bytes com 422 em vez de 500, recusa de senhas comuns (#3, #5)
+- [x] Tamanho máximo para os campos de texto (#3)
+- [x] `APP_ENV=production` recusa `JWT_SECRET` e `ADMIN_PASSWORD` padrão e CORS sem https (#1, #5)
+- [x] CORS com lista de origens em `CORS_ORIGINS` (#19)
+- [x] Middleware de headers de segurança (#21)
+- [x] `ReadTimeout`, `WriteTimeout` e `IdleTimeout` no servidor (#22)
+- [x] Postgres do compose publicado só em `127.0.0.1` (#25)
+- [x] Falha de login no log, sem o e-mail em claro (#26)
+- [ ] Logar também 401, 403 e 429 (#26)
 
 ## Etapa 2 — Eventos e rastreio público
 

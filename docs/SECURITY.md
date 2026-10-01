@@ -2,7 +2,7 @@
 
 Como o Rastreia trata cada risco, o que já está feito e o que falta. As tarefas pendentes estão em [TASKS.md](TASKS.md) (etapa 1.5) e o checklist rápido para cada mudança está em [RULES.md](RULES.md#3-segurança).
 
-Situação revisada em 01/10/2026, contra o código da etapa 1.
+Situação revisada em 01/10/2026, depois da etapa 1.5 (segurança da base).
 
 **Legenda:** ✅ feito · 🟡 parcial · 🔴 pendente · ⚪ ainda não se aplica (regra definida para quando se aplicar)
 
@@ -10,31 +10,31 @@ Situação revisada em 01/10/2026, contra o código da etapa 1.
 
 | # | Risco | Situação | Prioridade |
 | --- | --- | --- | --- |
-| 1 | Variáveis de ambiente expostas | 🟡 | Alta |
+| 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 |
 | 2 | Validação no front-end | ⚪ | — |
-| 3 | Validação no back-end | 🟡 | Alta |
+| 3 | Validação no back-end | ✅ | — |
 | 4 | SQL Injection | ✅ | — |
-| 5 | Autenticação fraca | 🟡 | Alta |
+| 5 | Autenticação fraca | 🟡 | Baixa |
 | 6 | IDOR | 🟡 | Alta na etapa 2 |
 | 7 | Senhas no banco | ✅ | — |
-| 8 | Força bruta | 🔴 | Alta |
+| 8 | Força bruta | ✅ | — |
 | 9 | Envio duplicado | 🔴 | Média |
 | 10 | CSRF | ⚪ | — |
 | 11 | Upload sem validação | ⚪ | — |
 | 12 | Vazamento de informação | 🟡 | Média |
 | 13 | Dependências vulneráveis | 🟡 | Média |
 | 14 | Tokens | 🟡 | Média |
-| 15 | Rate limit | 🔴 | Alta |
+| 15 | Rate limit | 🟡 | Etapa 2 |
 | 16 | Dados sensíveis expostos | 🟡 | Alta |
 | 17 | SSRF | ⚪ | — |
 | 18 | Cookies inseguros | ⚪ | — |
-| 19 | CORS | ⚪ | Etapa 3 |
+| 19 | CORS | ✅ | — |
 | 20 | XSS | ⚪ | Etapa 3 |
-| 21 | Headers de segurança | 🔴 | Média |
-| 22 | Timeouts e negação de serviço | 🟡 | Média |
-| 23 | Falsificação de IP | 🔴 | Alta |
-| 24 | Enumeração de e-mails | 🔴 | Média |
-| 25 | Banco de dados exposto | 🟡 | Média |
+| 21 | Headers de segurança | ✅ | — |
+| 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 |
+| 23 | Falsificação de IP | ✅ | — |
+| 24 | Enumeração de e-mails | ✅ | — |
+| 25 | Banco de dados exposto | 🟡 | Etapa 7 |
 | 26 | Logs e auditoria | 🟡 | Média |
 | 27 | LGPD e retenção de dados | 🔴 | Etapa 2 |
 
@@ -48,9 +48,9 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 - `.env` está no `.gitignore` e no `.dockerignore` (não entra no git nem na imagem).
 - Segredos só por variável de ambiente; `.env.example` com valores de desenvolvimento.
 - A API não sobe com `JWT_SECRET` com menos de 32 caracteres.
+- Com `APP_ENV=production`, a API **recusa subir** com o `JWT_SECRET` ou o `ADMIN_PASSWORD` de desenvolvimento, ou com origem de CORS sem `https` (`internal/config`, com testes).
 
 **Falta**
-- O `docker-compose.yml` tem valores padrão para `JWT_SECRET` e `ADMIN_PASSWORD`. Em produção, a API precisa **recusar subir** com esses valores conhecidos (`APP_ENV=production`).
 - Varredura de segredos no CI (gitleaks) para pegar chave commitada por engano.
 - Em produção (AWS), segredos no Secrets Manager ou SSM Parameter Store, nunca em arquivo.
 
@@ -58,17 +58,14 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
 Entra na etapa 3. Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
 
-## 3. Validação no back-end — 🟡
+## 3. Validação no back-end — ✅
 
-**Feito**
 - Validação centralizada no service com `apperr.Validator`, retornando 422 com todos os campos inválidos.
 - Normalização (trim, e-mail em minúsculas) antes de validar.
 - `httpx.Decode` limita o corpo a 1 MB e rejeita campos desconhecidos (impede *mass assignment*, ex.: mandar `"status"` ou `"role"` no corpo).
+- Tamanho máximo nos textos: nome 120, e-mail 254, endereço 300 caracteres.
+- Senha com mais de 72 bytes (limite do bcrypt) volta 422 em vez de 500.
 - O banco reforça com `CHECK` (status e papel), `NOT NULL` e `UNIQUE`.
-
-**Falta**
-- Tamanho máximo para textos (nome, endereço, e-mail). Hoje aceitam até 1 MB.
-- **Senha com mais de 72 bytes retorna 500** (limite do bcrypt). Confirmado em teste. Deve virar 422 com mensagem clara.
 
 ## 4. SQL Injection — ✅
 
@@ -77,15 +74,15 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 ## 5. Autenticação fraca — 🟡
 
 **Feito**
-- Senhas com bcrypt; mínimo de 8 caracteres.
-- Mesma mensagem para e-mail inexistente e senha errada.
+- Senhas com bcrypt; mínimo de 10 caracteres, máximo de 72 bytes e recusa de senhas comuns (`1234567890`, `senha12345`…).
+- Mesma mensagem e mesmo tempo de resposta para e-mail inexistente e senha errada (item 24).
 - JWT com algoritmo fixo (HS256), validade obrigatória e papel validado ao ler o token.
 - O papel vem do banco no login, nunca do corpo da requisição.
+- Em produção a API não sobe com a senha padrão do admin.
 
 **Falta**
-- O admin de teste (`admin12345`) é criado em qualquer ambiente se `ADMIN_EMAIL` estiver definido. Em produção: exigir `ADMIN_PASSWORD` forte e diferente do padrão.
-- Limite máximo de senha (72 bytes) e recusa de senhas óbvias (igual ao e-mail, sequências comuns).
-- Ver também força bruta (8), tokens (14) e enumeração (24).
+- Recusar senha igual ou parecida com o e-mail.
+- Ver também tokens (14).
 
 ## 6. IDOR (acesso a recurso de outra pessoa pelo id) — 🟡
 
@@ -104,14 +101,12 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Senha nunca vai para log.
 - Futuro: se o custo do bcrypt mudar, refazer o hash no próximo login.
 
-## 8. Ataque de força bruta — 🔴
+## 8. Ataque de força bruta — ✅
 
-Hoje é possível tentar senhas sem limite.
-
-**Plano**
-- Limite no `/auth/login` por IP (ex.: 10/min) e por e-mail (ex.: 5/min), respondendo 429 com `Retry-After`.
-- Atraso progressivo ou bloqueio temporário da conta depois de N falhas seguidas, com registro em log.
-- Depende de corrigir a falsificação de IP (23), senão o limite por IP é contornável.
+- Limite de 10 tentativas de login por minuto por IP, com 429 e `Retry-After`.
+- Bloqueio por e-mail: depois de 5 senhas erradas, o e-mail fica bloqueado por 1 minuto, e o tempo dobra a cada nova falha até 15 minutos. Vale também para e-mails que não existem, para o bloqueio não revelar quem tem conta. Senha certa zera o contador.
+- Cada falha é registrada no log com o IP e uma impressão do e-mail (não o e-mail em si).
+- O bloqueio fica em memória; quando houver mais de uma instância da API, passa para o Redis.
 
 ## 9. Bloquear durante envio (envio duplicado) — 🔴
 
@@ -173,15 +168,15 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - Reuso de refresh token já trocado revoga toda a sessão (sinal de roubo).
 - Adicionar `iss` e `aud` e validá-los.
 
-## 15. Rate limit — 🔴
+## 15. Rate limit — 🟡
 
-Nenhum limite hoje.
+**Feito**
+- Limite global de 120 requisições por minuto por IP e de 10 por minuto no login, com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
+- O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23).
 
-**Plano**
-- Limite global por IP (ex.: 100 req/min) e limites específicos: login (item 8) e rastreio público (ex.: 30/min por IP, para dificultar varredura de códigos).
-- Resposta 429 com `Retry-After`.
-- Em memória enquanto houver uma instância; no Redis quando houver mais de uma (etapa de tempo real).
-- Pré-requisito: item 23.
+**Falta**
+- Limite próprio do rastreio público (ex.: 30/min por IP) quando a rota existir (etapa 2).
+- Mover os contadores para o Redis quando houver mais de uma instância.
 
 ## 16. Dados sensíveis expostos — 🟡
 
@@ -204,42 +199,37 @@ A API não faz requisições para URLs informadas pelo usuário. Se passar a faz
 
 Não há cookies hoje. Qualquer cookie que for criado: `HttpOnly`, `Secure`, `SameSite=Strict` (ou `Lax` com justificativa), `Path` restrito, prefixo `__Host-` quando possível e validade curta.
 
-## 19. CORS — ⚪
+## 19. CORS — ✅
 
-Sem CORS configurado hoje, o navegador já bloqueia chamadas de outros sites. Na etapa 3:
-- Lista exata de origens vinda de variável de ambiente (`CORS_ORIGINS`), sem `*`.
-- Só os métodos e cabeçalhos usados; `credentials` só se o refresh por cookie exigir.
-- Rastreio público pode ter regra mais aberta, mas apenas para `GET`.
+- Lista exata de origens vinda de `CORS_ORIGINS` (padrão: `http://localhost:5173`, o Vite), sem `*`. Em produção só aceita `https`.
+- Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
+- Sem `credentials` por enquanto; entra só se o refresh por cookie exigir (item 18).
 
 ## 20. XSS — ⚪
 
 Etapa 3. React já escapa o conteúdo; proibido `dangerouslySetInnerHTML` com dado vindo da API. Content-Security-Policy restritiva no front. O token de acesso fica em memória, não em `localStorage`.
 
-## 21. Headers de segurança — 🔴
+## 21. Headers de segurança — ✅
 
-Adicionar um middleware com `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` / `frame-ancestors 'none'` (contra clickjacking), `Referrer-Policy: no-referrer`, `Cache-Control: no-store` nas respostas autenticadas e `Strict-Transport-Security` em produção.
+Middleware em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` e `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (contra clickjacking), `Referrer-Policy: no-referrer`, `Cache-Control: no-store` e, em produção, `Strict-Transport-Security`.
 
 ## 22. Timeouts e negação de serviço — 🟡
 
-**Feito:** `ReadHeaderTimeout` de 5 s, timeout de 15 s por requisição no roteador, corpo limitado a 1 MB, paginação com máximo de 100 itens.
+**Feito:** `ReadHeaderTimeout` de 5 s, `ReadTimeout` de 15 s, `WriteTimeout` de 30 s, `IdleTimeout` de 60 s, timeout de 15 s por requisição no roteador, corpo limitado a 1 MB, paginação com máximo de 100 itens e rate limit (item 15).
 
-**Falta:** `ReadTimeout`, `WriteTimeout` e `IdleTimeout` no `http.Server` (um cliente lento ainda pode segurar conexões) e limite de conexões no pool do banco ajustado para produção.
+**Falta:** limite de conexões no pool do banco ajustado para produção, e no WebSocket (etapa 5) um limite de conexões por IP e de tamanho de mensagem.
 
-## 23. Falsificação de IP — 🔴
+## 23. Falsificação de IP — ✅
 
-O middleware `RealIP` aceita o cabeçalho `X-Forwarded-For` de qualquer cliente. **Confirmado em teste:** uma requisição com `X-Forwarded-For: 6.6.6.6` aparece no log como vinda de 6.6.6.6. Isso anula qualquer rate limit por IP.
+O `X-Forwarded-For` só é lido com `TRUST_PROXY=true`, que deve ser ligado apenas atrás do load balancer em produção. Fora disso, o IP é o da conexão. Teste em `internal/server` garante que um `X-Forwarded-For` falso não escapa do rate limit.
 
-**Correção:** só confiar nesses cabeçalhos quando a conexão vier de um proxy conhecido (o load balancer em produção, configurado por variável `TRUSTED_PROXIES`); fora disso, usar o IP da conexão.
+## 24. Enumeração de e-mails — ✅
 
-## 24. Enumeração de e-mails — 🔴
-
-A mensagem do login é igual, mas o tempo não: **confirmado em teste**, e-mail inexistente responde em ~0 ms e e-mail existente com senha errada em ~50 ms (tempo do bcrypt). Dá para descobrir quais e-mails têm conta.
-
-**Correção:** quando o e-mail não existe, comparar a senha contra um hash bcrypt fixo, para o tempo ser igual nos dois casos. O cadastro de motorista (409 "e-mail já usado") só é acessível ao admin, então não é problema.
+Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, então o tempo é o mesmo dos dois jeitos (medido: ~80 a 90 ms em ambos). A mensagem também é a mesma, e o bloqueio por falhas vale para qualquer e-mail. O cadastro de motorista (409 "e-mail já usado") só é acessível ao admin.
 
 ## 25. Banco de dados exposto — 🟡
 
-**Desenvolvimento:** o Postgres do compose publica a porta em `0.0.0.0` com senha `rastreia`, ou seja, fica acessível a outras máquinas da mesma rede. Publicar só em `127.0.0.1`.
+**Desenvolvimento:** ✅ o Postgres do compose publica a porta só em `127.0.0.1`, então outras máquinas da rede não chegam nele.
 
 **Produção**
 - Banco em sub-rede privada, sem IP público, acessível só pela API.
@@ -249,10 +239,10 @@ A mensagem do login é igual, mas o tempo não: **confirmado em teste**, e-mail 
 
 ## 26. Logs e auditoria — 🟡
 
-**Feito:** logs estruturados em JSON com request ID; erro interno logado com detalhe.
+**Feito:** logs estruturados em JSON com request ID; erro interno logado com detalhe; falha de login logada com IP e impressão do e-mail.
 
 **Falta**
-- Eventos de segurança logados de forma pesquisável: login com falha, 429, 403, token inválido. Sem senha, token ou dado pessoal no log.
+- Logar também 429, 403 e token inválido de forma pesquisável. Sem senha, token ou dado pessoal no log.
 - Auditoria de negócio: quem criou ou alterou cada entrega e cada mudança de status (a tabela de eventos da etapa 2 já cobre o status).
 - Alertas em produção para pico de falhas de login e de 5xx.
 

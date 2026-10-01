@@ -3,6 +3,7 @@ package delivery
 import (
 	"context"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -123,6 +124,8 @@ func TestCreate_Validation(t *testing.T) {
 		"empty address":   {func(in *CreateInput) { in.Address = "" }, "address"},
 		"unknown driver":  {func(in *CreateInput) { in.DriverID = ptr(int64(99)) }, "driver_id"},
 		"admin as driver": {func(in *CreateInput) { in.DriverID = ptr(int64(1)) }, "driver_id"},
+		"long name":       {func(in *CreateInput) { in.RecipientName = strings.Repeat("a", 121) }, "recipient_name"},
+		"long address":    {func(in *CreateInput) { in.Address = strings.Repeat("a", 301) }, "address"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

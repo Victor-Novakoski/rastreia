@@ -4,7 +4,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 1 concluída; trabalhando na 1.5 (segurança da base). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 1 e 1.5 concluídas; próxima é a 2 (eventos e rastreio público). Ver [TASKS.md](TASKS.md).
 - **Atualizado em:** 01/10/2026.
 
 ## Decisões
@@ -19,6 +19,9 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-01 — Código de rastreio aleatório (`RS` + 10 caracteres sem 0/O/1/I).** *Legível por telefone e impossível de adivinhar a partir de outro código; o id sequencial nunca é público.*
 - **2026-10-01 — Uma única transportadora por instalação.** *Multi-tenant fica fora de escopo para manter o foco* ([PRD](PRD.md)).
 - **2026-10-01 — Hot reload com air via `docker-compose.override.yml`.** *`docker compose up` já sobe o ambiente de desenvolvimento, sem make nem `-f`; a imagem de produção continua sendo o estágio final do Dockerfile.* (`make dev`, arquivo `docker-compose.dev.yml`)
+- **2026-10-01 — Rate limit e bloqueio de login em memória.** *Uma instância só por enquanto; vão para o Redis quando houver mais de uma.* (httprate com Redis desde já)
+- **2026-10-01 — `TRUST_PROXY` liga/desliga a leitura de `X-Forwarded-For`.** *Mais simples que uma lista de proxies; em produção só há o load balancer na frente.* (`TRUSTED_PROXIES` com faixas de IP)
+- **2026-10-01 — Bloqueio de login conta e-mails inexistentes também.** *Senão o bloqueio revelaria quais e-mails têm conta.*
 - **2026-10-01 — Documentação de produto em `docs/`.** PRD, ARCHITECTURE, RULES, DESIGN, TASKS, MEMORY e SECURITY, para o projeto não fugir do escopo.
 
 ## Armadilhas conhecidas
@@ -27,7 +30,8 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **air antigo (v1.51):** não aceita `tmp_dir` absoluto nem `build.entrypoint`. Por isso o `.air.toml` usa `tmp/` e `build.bin`, e o container troca os caminhos por flags no `CMD` do estágio `dev`. O aviso "build.bin is deprecated" nas versões novas é esperado.
 - **Imagens de dev e produção** têm nomes diferentes (`rastreia-api-dev` e `rastreia-api`); se tivessem o mesmo, um `up` sem `--build` podia usar a imagem errada.
 - **air no container e na máquina usam a porta 8080:** rodar um de cada vez.
-- **bcrypt aceita no máximo 72 bytes de senha** e devolve erro acima disso (hoje vira 500; correção na etapa 1.5).
+- **bcrypt aceita no máximo 72 bytes de senha** e devolve erro acima disso; a validação recusa antes com 422.
+- **Senha do admin de teste (`admin12345`) está na lista de senhas comuns,** mas é aceita só para o admin criado pela configuração, porque em produção a API já recusa esse valor.
 
 ## Glossário
 
