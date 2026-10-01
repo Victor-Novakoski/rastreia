@@ -311,6 +311,10 @@ func TestList_Paging(t *testing.T) {
 	_, err = svc.List(context.Background(), ListInput{Status: ptr("lost")})
 	var verr *apperr.ValidationError
 	assert.ErrorAs(t, err, &verr)
+
+	_, err = svc.List(context.Background(), ListInput{Page: 999_999_999})
+	require.ErrorAs(t, err, &verr, "a huge page would overflow the offset")
+	assert.Contains(t, verr.Fields, "page")
 }
 
 func TestNewTrackingCode_IsRandom(t *testing.T) {
