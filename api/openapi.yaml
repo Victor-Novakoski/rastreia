@@ -1,0 +1,206 @@
+openapi: 3.0.3
+info:
+  title: Rastreia API
+  version: 0.1.0
+  description: Delivery tracking API. Admins create deliveries and drivers; drivers update status; customers follow a public tracking link.
+servers:
+  - url: http://localhost:8080
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    ValidationError:
+      type: object
+      properties:
+        error: { type: string, example: invalid input }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, driver] }
+        created_at: { type: string, format: date-time }
+    CreateDriver:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+    Delivery:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        tracking_code: { type: string, example: RS7K2M9QXA4P }
+        recipient_name: { type: string }
+        recipient_email: { type: string, format: email }
+        address: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        driver_id: { type: integer, format: int64, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Status:
+      type: string
+      enum: [pending, picked_up, in_transit, delivered, failed]
+    CreateDelivery:
+      type: object
+      required: [recipient_name, recipient_email, address]
+      properties:
+        recipient_name: { type: string }
+        recipient_email: { type: string, format: email }
+        address: { type: string }
+        driver_id: { type: integer, format: int64 }
+    UpdateDelivery:
+      type: object
+      description: Only the fields sent are changed. Status changes through delivery events.
+      properties:
+        recipient_name: { type: string }
+        recipient_email: { type: string, format: email }
+        address: { type: string }
+        driver_id: { type: integer, format: int64 }
+  responses:
+    BadRequest:
+      description: Malformed request
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: Missing or invalid token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Role not allowed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Invalid:
+      description: Validation failed
+      content: { application/json: { schema: { $ref: "#/components/schemas/ValidationError" } } }
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+paths:
+  /health:
+    get:
+      summary: Health check (also pings the database)
+      responses:
+        "200": { description: OK }
+        "503": { description: Database unavailable }
+  /auth/login:
+    post:
+      summary: Log in and get a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  role: { type: string, enum: [admin, driver] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /drivers:
+    get:
+      summary: List drivers
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Drivers
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a driver
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateDriver" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: E-mail already in use }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /deliveries:
+    get:
+      summary: List deliveries, newest first
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Deliveries
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Delivery" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+    post:
+      summary: Create a delivery (a tracking code is generated)
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateDelivery" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /deliveries/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Get a delivery
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Delivery
+          content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Edit a delivery
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateDelivery" } } }
+      responses:
+        "200":
+          description: Updated
+          content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
