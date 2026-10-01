@@ -1,7 +1,8 @@
-# Ambiente de desenvolvimento: a API roda com air e recompila a cada alteração.
-# Uso: make dev (ou docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+# Carregado automaticamente pelo docker compose: a API roda com air e
+# recompila a cada alteração. A imagem de produção é o estágio final do Dockerfile.
 services:
   api:
+    image: rastreia-api-dev
     build:
       context: .
       target: dev

@@ -1,10 +1,7 @@
-.PHONY: up dev down run test cover lint sqlc
+.PHONY: up down run test cover lint sqlc
 
-up:        ## Sobe Postgres e API com Docker
+up:        ## Sobe Postgres e API com Docker (com hot reload)
 	docker compose up --build -d
-
-dev:       ## Sobe Postgres e API com hot reload (air)
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 down:
 	docker compose down
