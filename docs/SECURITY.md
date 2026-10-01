@@ -8,35 +8,35 @@ Situação revisada em 01/10/2026, depois da etapa 2 (eventos e rastreio públic
 
 ## Resumo
 
-| # | Risco | Situação | Prioridade |
-| --- | --- | --- | --- |
-| 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 |
-| 2 | Validação no front-end | ⚪ | — |
-| 3 | Validação no back-end | ✅ | — |
-| 4 | SQL Injection | ✅ | — |
-| 5 | Autenticação fraca | 🟡 | Baixa |
-| 6 | IDOR | ✅ | — |
-| 7 | Senhas no banco | ✅ | — |
-| 8 | Força bruta | ✅ | — |
-| 9 | Envio duplicado | 🟡 | Etapa 3 (front) |
-| 10 | CSRF | ⚪ | — |
-| 11 | Upload sem validação | ⚪ | — |
-| 12 | Vazamento de informação | 🟡 | Média |
-| 13 | Dependências vulneráveis | 🟡 | Média |
-| 14 | Tokens | 🟡 | Média |
-| 15 | Rate limit | 🟡 | Etapa 5 (Redis) |
-| 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) |
-| 17 | SSRF | ⚪ | — |
-| 18 | Cookies inseguros | ⚪ | — |
-| 19 | CORS | ✅ | — |
-| 20 | XSS | ⚪ | Etapa 3 |
-| 21 | Headers de segurança | ✅ | — |
-| 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 |
-| 23 | Falsificação de IP | ✅ | — |
-| 24 | Enumeração de e-mails | ✅ | — |
-| 25 | Banco de dados exposto | 🟡 | Etapa 7 |
-| 26 | Logs e auditoria | 🟡 | Média |
-| 27 | LGPD e retenção de dados | 🟡 | Etapa 6 |
+| # | Risco | Situação | Prioridade | O que é |
+| --- | --- | --- | --- | --- |
+| 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 | Senhas, chaves e segredos vazando por arquivo commitado, imagem Docker ou valor padrão usado em produção. |
+| 2 | Validação no front-end | ⚪ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
+| 3 | Validação no back-end | ✅ | — | A API confere tipo, formato e tamanho de tudo que recebe. É a validação que realmente protege. |
+| 4 | SQL Injection | ✅ | — | Texto enviado pelo usuário vira parte do comando SQL e consegue ler ou apagar dados do banco. |
+| 5 | Autenticação fraca | 🟡 | Baixa | Senha fraca ou previsível, login que dá pistas, ou credencial padrão que nunca foi trocada. |
+| 6 | IDOR | ✅ | — | Trocar o id na URL (ex.: /deliveries/2 por /deliveries/3) e acessar dado de outra pessoa. |
+| 7 | Senhas no banco | ✅ | — | Guardar a senha como texto no banco: se o banco vazar, todas as senhas vazam junto. |
+| 8 | Força bruta | ✅ | — | Tentar milhares de senhas seguidas até acertar. |
+| 9 | Envio duplicado | 🟡 | Etapa 3 (front) | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
+| 10 | CSRF | ⚪ | — | Outro site faz o navegador do usuário logado enviar uma ação para a API sem ele perceber. |
+| 11 | Upload sem validação | ⚪ | — | Arquivo malicioso disfarçado (ex.: script com extensão .jpg) ou grande demais para o servidor. |
+| 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
+| 13 | Dependências vulneráveis | 🟡 | Média | Biblioteca de terceiros com falha de segurança conhecida. |
+| 14 | Tokens | 🟡 | Média | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
+| 15 | Rate limit | 🟡 | Etapa 5 (Redis) | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
+| 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
+| 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
+| 18 | Cookies inseguros | ⚪ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
+| 19 | CORS | ✅ | — | Regra do navegador que diz quais sites podem chamar a API. |
+| 20 | XSS | ⚪ | Etapa 3 | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
+| 21 | Headers de segurança | ✅ | — | Cabeçalhos HTTP que mandam o navegador se proteger (ex.: não abrir a página dentro de iframe, só usar HTTPS). |
+| 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 | Conexões lentas ou requisições enormes que prendem o servidor e derrubam a API. |
+| 23 | Falsificação de IP | ✅ | — | Cliente mente o IP pelo cabeçalho X-Forwarded-For para escapar do rate limit. |
+| 24 | Enumeração de e-mails | ✅ | — | Descobrir quais e-mails têm conta pela mensagem ou pelo tempo de resposta do login. |
+| 25 | Banco de dados exposto | 🟡 | Etapa 7 | Banco acessível pela rede ou pela internet, sem precisar passar pela API. |
+| 26 | Logs e auditoria | 🟡 | Média | Registrar quem fez o quê e os eventos suspeitos, para investigar e criar alertas. |
+| 27 | LGPD e retenção de dados | 🟡 | Etapa 6 | Lei de proteção de dados: coletar só o necessário, mostrar o mínimo e apagar quando não precisar mais. |
 
 Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
