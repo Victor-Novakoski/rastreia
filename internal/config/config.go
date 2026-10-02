@@ -32,6 +32,9 @@ type Config struct {
 	// RabbitMQURL (amqp://...) turns on notifications: the API publishes
 	// every status change there. Empty keeps them in the outbox table.
 	RabbitMQURL string `mapstructure:"RABBITMQ_URL"`
+	// VAPIDPublicKey turns on Web Push: the front reads it from
+	// /public/push/key to subscribe. The worker holds the private key.
+	VAPIDPublicKey string `mapstructure:"VAPID_PUBLIC_KEY"`
 }
 
 // Values shipped in .env.example and docker-compose.yml. Production must override them.
@@ -66,7 +69,7 @@ func Load() (Config, error) {
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("CORS_ORIGINS", "http://localhost:5173")
 	v.SetDefault("TRUST_PROXY", false)
-	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "REDIS_URL", "RABBITMQ_URL"} {
+	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "REDIS_URL", "RABBITMQ_URL", "VAPID_PUBLIC_KEY"} {
 		_ = v.BindEnv(key)
 	}
 	v.AutomaticEnv()

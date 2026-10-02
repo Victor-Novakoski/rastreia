@@ -42,7 +42,8 @@ internal/
   auth/               JWT, bcrypt, login e middlewares de autenticação e papel
   user/               cadastro e listagem de usuários (admin e motorista)
   delivery/           regras de entregas
-  notify/             notificações: relay do outbox para o RabbitMQ, worker e e-mail
+  notify/             notificações: relay do outbox para o RabbitMQ, worker, e-mail e Web Push
+  push/               inscrição do navegador no Web Push pela página de rastreio
   apperr/             erros de domínio (validação, não encontrado, conflito)
   httpx/              helpers HTTP: JSON, decode seguro, mapeamento de erros
   server/             montagem das rotas e middlewares globais
@@ -93,7 +94,8 @@ API: troca de status ─┬─► delivery_events (mesma transação, published_
 relay (goroutine da API, a cada 1s)
   └─► lê eventos não publicados (FOR UPDATE SKIP LOCKED)
       └─► exchange rastreia.events (topic, delivery.status_changed)
-          └─► fila notifications.email ──► worker ──► SMTP
+          ├─► fila notifications.email ──► worker ──► SMTP
+          └─► fila notifications.push  ──► worker ──► serviço de push do navegador (Web Push)
                  │ falhou: rejeita
                  ▼
               notifications.email.retry (espera 30s e volta)
@@ -102,21 +104,22 @@ relay (goroutine da API, a cada 1s)
 
 - `delivery_events` funciona como outbox: o evento e a marca "falta publicar" são gravados juntos, então nenhuma troca de status fica sem notificação, mesmo com o RabbitMQ fora do ar. Sem `RABBITMQ_URL` o relay não roda e os eventos ficam no banco.
 - O relay publica com confirmação do RabbitMQ e só então marca `published_at`. Eventos com mais de 1 hora são descartados sem envio. Entrega é **pelo menos uma vez**: uma queda entre publicar e gravar repete o e-mail.
-- Cada canal tem sua fila ligada à mesma exchange; um canal novo (push) não mexe no e-mail.
-- A mensagem leva nome e e-mail do destinatário porque o worker não acessa o banco.
+- Cada canal tem sua fila (com `.retry` e `.dead`) ligada à mesma exchange; um canal não atrasa nem derruba o outro.
+- A mensagem leva nome e e-mail do destinatário, então o e-mail não precisa do banco. O push precisa: lê as inscrições em `push_subscriptions` (por isso o worker recebe `DATABASE_URL` quando tem as chaves VAPID).
+- Web Push: na página de rastreio o destinatário toca em "Ativar avisos", o navegador registra `web/public/sw.js`, cria a inscrição com a chave pública VAPID (`GET /public/push/key`) e a manda para `POST /public/tracking/{code}/push`. O worker criptografa e assina (VAPID) cada aviso; inscrições que o serviço responde 404/410 são apagadas, e todas são apagadas quando a entrega é entregue. O front é um PWA instalável (`manifest.webmanifest`); no iPhone o push só funciona com o site adicionado à tela de início.
 
 ## Banco de dados
 
 - Migrations em `internal/database/migrations`, embutidas com `go:embed` e aplicadas automaticamente quando a API sobe.
 - Uma migration nunca é editada depois de ir para a `main`: cria-se outra.
-- Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status e outbox das notificações) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
+- Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status e outbox das notificações), `push_subscriptions` (navegadores que pediram aviso) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
 - A mudança de status usa concorrência otimista: o `UPDATE` só altera a linha se o status ainda for o que o service leu (`WHERE status = from_status`); se outro evento chegou antes, responde 409.
 - `deliveries.completed_at` guarda quando a entrega foi entregue ou falhou pela última vez; o rastreio público expira 30 dias depois.
 - O status da entrega é validado também por `CHECK` no banco, não só na aplicação.
 
 ## Configuração
 
-Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`, `REDIS_URL`, `RABBITMQ_URL`. O worker usa `RABBITMQ_URL`, `TRACKING_URL` e `SMTP_*`. Variáveis de ambiente têm prioridade sobre o `.env`.
+Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`, `REDIS_URL`, `RABBITMQ_URL`, `VAPID_PUBLIC_KEY`. O worker usa `RABBITMQ_URL`, `TRACKING_URL`, `SMTP_*` e, para o push, `DATABASE_URL` e `VAPID_*`. Variáveis de ambiente têm prioridade sobre o `.env`.
 
 ## Ambiente de desenvolvimento
 

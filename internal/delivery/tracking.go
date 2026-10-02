@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Victor-Novakoski/rastreia/internal/apperr"
+	"github.com/Victor-Novakoski/rastreia/internal/store"
 )
 
 // trackingTTL is how long the public link keeps working after the delivery
@@ -33,16 +34,9 @@ type TrackingEvent struct {
 // Track returns the public view of a delivery. Malformed, unknown and expired
 // codes all answer not found.
 func (s *Service) Track(ctx context.Context, code string) (Tracking, error) {
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if !trackingCodeRe.MatchString(code) {
-		return Tracking{}, apperr.ErrNotFound
-	}
-	d, err := s.store.GetDeliveryByTrackingCode(ctx, code)
+	d, err := s.PublicDelivery(ctx, code)
 	if err != nil {
-		return Tracking{}, notFound(err)
-	}
-	if d.CompletedAt != nil && s.now().Sub(*d.CompletedAt) > trackingTTL {
-		return Tracking{}, apperr.ErrNotFound
+		return Tracking{}, err
 	}
 	events, err := s.store.ListDeliveryEvents(ctx, d.ID)
 	if err != nil {
@@ -59,6 +53,23 @@ func (s *Service) Track(ctx context.Context, code string) (Tracking, error) {
 		t.Events[i] = TrackingEvent{Status: e.Status, CreatedAt: e.CreatedAt}
 	}
 	return t, nil
+}
+
+// PublicDelivery finds the delivery behind a public tracking code, with the
+// same not found as Track for malformed, unknown and expired codes.
+func (s *Service) PublicDelivery(ctx context.Context, code string) (store.Delivery, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if !trackingCodeRe.MatchString(code) {
+		return store.Delivery{}, apperr.ErrNotFound
+	}
+	d, err := s.store.GetDeliveryByTrackingCode(ctx, code)
+	if err != nil {
+		return store.Delivery{}, notFound(err)
+	}
+	if d.CompletedAt != nil && s.now().Sub(*d.CompletedAt) > trackingTTL {
+		return store.Delivery{}, apperr.ErrNotFound
+	}
+	return d, nil
 }
 
 func firstName(name string) string {

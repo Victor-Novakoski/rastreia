@@ -50,6 +50,8 @@ services:
       DATABASE_URL: postgres://rastreia:rastreia@db:5432/rastreia?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      # Web Push liga com as chaves no .env (gere com: go run ./cmd/worker vapid).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rastreia.dev}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
@@ -71,7 +73,12 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       TRACKING_URL: http://localhost:5173/rastreio
+      DATABASE_URL: postgres://rastreia:rastreia@db:5432/rastreia?sslmode=disable
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
     depends_on:
+      db:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       mailpit:

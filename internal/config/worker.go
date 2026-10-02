@@ -20,6 +20,17 @@ type Worker struct {
 	SMTPPassword string `mapstructure:"SMTP_PASSWORD"`
 	SMTPFrom     string `mapstructure:"SMTP_FROM"`
 	SMTPTLS      bool   `mapstructure:"SMTP_TLS"`
+	// Web Push runs when the VAPID keys are set. It needs the database to
+	// read the browsers that subscribed. Generate keys with: worker vapid
+	DatabaseURL     string `mapstructure:"DATABASE_URL"`
+	VAPIDPublicKey  string `mapstructure:"VAPID_PUBLIC_KEY"`
+	VAPIDPrivateKey string `mapstructure:"VAPID_PRIVATE_KEY"`
+	VAPIDSubject    string `mapstructure:"VAPID_SUBJECT"`
+}
+
+// PushEnabled tells whether the worker sends Web Push.
+func (c Worker) PushEnabled() bool {
+	return c.VAPIDPrivateKey != ""
 }
 
 // LoadWorker reads the worker settings, with .env as a fallback like Load.
@@ -31,7 +42,8 @@ func LoadWorker() (Worker, error) {
 	v.SetDefault("SMTP_PORT", 1025)
 	v.SetDefault("SMTP_FROM", "Rastreia <nao-responda@rastreia.dev>")
 	v.SetDefault("SMTP_TLS", false)
-	for _, key := range []string{"RABBITMQ_URL", "SMTP_USERNAME", "SMTP_PASSWORD"} {
+	v.SetDefault("VAPID_SUBJECT", "mailto:contato@rastreia.dev")
+	for _, key := range []string{"RABBITMQ_URL", "SMTP_USERNAME", "SMTP_PASSWORD", "DATABASE_URL", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"} {
 		_ = v.BindEnv(key)
 	}
 	v.AutomaticEnv()
@@ -50,6 +62,9 @@ func (c Worker) validate() error {
 	var errs []error
 	if c.RabbitMQURL == "" {
 		errs = append(errs, errors.New("RABBITMQ_URL is required"))
+	}
+	if c.PushEnabled() && (c.VAPIDPublicKey == "" || c.DatabaseURL == "") {
+		errs = append(errs, errors.New("VAPID_PRIVATE_KEY needs VAPID_PUBLIC_KEY and DATABASE_URL for Web Push"))
 	}
 	if c.AppEnv == "production" {
 		if !c.SMTPTLS {

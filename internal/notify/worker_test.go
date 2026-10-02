@@ -102,7 +102,7 @@ func purge(t *testing.T, url string) {
 	ch, err := conn.Channel()
 	require.NoError(t, err)
 	require.NoError(t, notify.Declare(ch))
-	for _, q := range []string{notify.EmailQueue, notify.EmailRetryQueue, notify.EmailDeadQueue} {
+	for _, q := range []string{notify.EmailQueue, notify.EmailRetryQueue, notify.EmailDeadQueue, notify.PushQueue, notify.PushQueue + ".retry", notify.PushDeadQueue} {
 		_, err := ch.QueuePurge(q, false)
 		require.NoError(t, err)
 	}
@@ -123,7 +123,7 @@ func TestWorker_SendsEmail(t *testing.T) {
 	publish(t, url, msg("delivered"))
 
 	mailer := &fakeMailer{}
-	startWorker(t, notify.NewWorker(url, mailer, "http://localhost:5173/rastreio"))
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio")))
 
 	require.Eventually(t, func() bool { return mailer.count() == 1 }, 10*time.Second, 50*time.Millisecond)
 	assert.Equal(t, "Sua entrega RSABCDEFGH23 foi entregue", mailer.sent[0].Subject)
@@ -132,9 +132,9 @@ func TestWorker_SendsEmail(t *testing.T) {
 func TestWorker_ParksAfterMaxAttempts(t *testing.T) {
 	url := rabbit(t)
 	purge(t, url)
-	w := notify.NewWorker(url, &fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio")
-	w.MaxAttempts = 1
-	startWorker(t, w)
+	c := notify.EmailConsumer(&fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio")
+	c.MaxAttempts = 1
+	startWorker(t, notify.NewWorker(url, c))
 	publish(t, url, msg("delivered"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailDeadQueue) == 1 }, 10*time.Second, 100*time.Millisecond)
@@ -144,18 +144,35 @@ func TestWorker_ParksAfterMaxAttempts(t *testing.T) {
 func TestWorker_RetriesSendFailure(t *testing.T) {
 	url := rabbit(t)
 	purge(t, url)
-	startWorker(t, notify.NewWorker(url, &fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio"))
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(&fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio")))
 	publish(t, url, msg("delivered"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailRetryQueue) == 1 }, 10*time.Second, 100*time.Millisecond)
 	assert.Equal(t, 0, queueLen(t, url, notify.EmailDeadQueue))
 }
 
+func TestWorker_FansOutToEveryChannel(t *testing.T) {
+	url := rabbit(t)
+	purge(t, url)
+	mailer := &fakeMailer{}
+	var pushed sync.WaitGroup
+	pushed.Add(1)
+	push := notify.Consumer{Queue: notify.PushQueue, Handle: func(context.Context, notify.StatusChanged) error {
+		pushed.Done()
+		return nil
+	}}
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio"), push))
+	publish(t, url, msg("in_transit"))
+
+	require.Eventually(t, func() bool { return mailer.count() == 1 }, 10*time.Second, 50*time.Millisecond)
+	pushed.Wait()
+}
+
 func TestWorker_ParksBadMessage(t *testing.T) {
 	url := rabbit(t)
 	purge(t, url)
 	mailer := &fakeMailer{}
-	startWorker(t, notify.NewWorker(url, mailer, "http://localhost:5173/rastreio"))
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio")))
 	publish(t, url, msg("lost"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailDeadQueue) == 1 }, 10*time.Second, 100*time.Millisecond)

@@ -39,6 +39,15 @@ type IdempotencyKey struct {
 	CreatedAt   time.Time
 }
 
+type PushSubscription struct {
+	ID         int64
+	DeliveryID int64
+	Endpoint   string
+	P256dh     string
+	Auth       string
+	CreatedAt  time.Time
+}
+
 type RefreshToken struct {
 	ID        int64
 	UserID    int64

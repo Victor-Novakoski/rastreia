@@ -18,6 +18,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/database"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/notify"
+	"github.com/Victor-Novakoski/rastreia/internal/push"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
@@ -82,6 +83,11 @@ func run() error {
 		go notify.NewRelay(pool, pub).Run(ctx)
 	}
 
+	var pushes *push.Handler
+	if cfg.VAPIDPublicKey != "" {
+		pushes = push.NewHandler(push.NewService(deliveries, queries), cfg.VAPIDPublicKey)
+	}
+
 	if cfg.AdminEmail != "" {
 		err := users.EnsureAdmin(ctx, user.CreateInput{
 			Name: cfg.AdminName, Email: cfg.AdminEmail, Password: cfg.AdminPassword,
@@ -101,6 +107,7 @@ func run() error {
 			Users:      user.NewHandler(users),
 			Deliveries: delivery.NewHandler(deliveries),
 			Live:       delivery.NewLiveHandler(deliveries, live, tokens),
+			Push:       pushes,
 			Ready: func(r *http.Request) error {
 				if err := pool.Ping(r.Context()); err != nil {
 					return fmt.Errorf("database: %w", err)

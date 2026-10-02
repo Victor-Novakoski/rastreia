@@ -76,7 +76,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 ## Etapa 6 — Notificações
 
 - [x] RabbitMQ e worker de e-mail quando o status muda (outbox, retry e fila de falhas)
-- [ ] Notificação no celular por Web Push (PWA instalável), como segundo consumidor do mesmo evento
+- [x] Notificação no celular por Web Push (PWA instalável), como segundo consumidor do mesmo evento
 - [ ] Política de retenção e anonimização de dados (#27)
 
 ## Etapa 7 — Deploy na AWS
