@@ -343,3 +343,29 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Tracking" } } }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+  /public/tracking/{code}/live:
+    get:
+      summary: Live tracking over WebSocket (no login)
+      description: |
+        Upgrades to a WebSocket. After every change to the delivery the server sends a text message
+        with the same Tracking body as GET /public/tracking/{code}. The client sends nothing.
+        Unknown and expired codes answer 404 before the upgrade. Shares the tracking rate limit,
+        and each IP may keep at most 20 live connections.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+      responses:
+        "101": { description: Switching to WebSocket }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /live/deliveries:
+    get:
+      summary: Live changes for the admin panel over WebSocket
+      description: |
+        Upgrades to a WebSocket. Browsers cannot send an Authorization header here, so the first
+        message must be `{"token": "<admin access token>"}`, within 5 seconds. Then the server sends
+        `{"delivery_id": 1, "status": "in_transit"}` whenever a delivery is created or changes.
+        Close code 4001 means the token is missing, invalid, not an admin's, or expired: renew it
+        with POST /auth/refresh and reconnect.
+      responses:
+        "101": { description: Switching to WebSocket }
+        "429": { $ref: "#/components/responses/TooManyRequests" }

@@ -91,6 +91,7 @@ type Service struct {
 	store   Store
 	newCode func() (string, error)
 	now     func() time.Time
+	pub     Publisher
 }
 
 func NewService(s Store) *Service {
@@ -107,6 +108,9 @@ func (s *Service) Create(ctx context.Context, actorID int64, in CreateInput) (De
 		out, err = s.insert(ctx, q, actorID, in)
 		return err
 	})
+	if err == nil {
+		s.announce(ctx, out.ID, out.TrackingCode, out.Status, false)
+	}
 	return out, err
 }
 
@@ -260,6 +264,8 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 	if err != nil {
 		return Delivery{}, notFound(err)
 	}
+	// The public page shows the recipient's first name, so it reloads too.
+	s.announce(ctx, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
 	return fromStore(d), nil
 }
 

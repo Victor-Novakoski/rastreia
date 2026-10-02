@@ -14,6 +14,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/config"
 	"github.com/Victor-Novakoski/rastreia/internal/database"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
@@ -48,6 +49,9 @@ func run() error {
 	queries := store.New(pool)
 	tokens := auth.NewTokens(cfg.JWTSecret, cfg.JWTTTL)
 	users := user.NewService(queries)
+	broker := realtime.NewLocal()
+	deliveries := delivery.NewService(delivery.NewPGStore(pool)).WithPublisher(broker)
+	live := realtime.NewServer(ctx, broker, realtime.Options{Origins: cfg.AllowedOrigins()})
 
 	if cfg.AdminEmail != "" {
 		err := users.EnsureAdmin(ctx, user.CreateInput{
@@ -66,7 +70,8 @@ func run() error {
 				auth.NewSessions(queries, cfg.RefreshTTL),
 				auth.CookieOptions{AllowedOrigins: cfg.AllowedOrigins()}),
 			Users:      user.NewHandler(users),
-			Deliveries: delivery.NewHandler(delivery.NewService(delivery.NewPGStore(pool))),
+			Deliveries: delivery.NewHandler(deliveries),
+			Live:       delivery.NewLiveHandler(deliveries, live, tokens),
 			Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
 			Options: server.Options{
 				Production:  cfg.IsProduction(),
