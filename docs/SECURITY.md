@@ -143,7 +143,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - Headers de segurança (item 21).
 - Decidir se `/openapi.yaml` continua público em produção (hoje é; não expõe segredo, mas mapeia a API).
 
-## 13. Dependências vulneráveis — 🟡
+## 13. Dependências vulneráveis — ✅
 
 **Feito**
 - `govulncheck` rodado em 01/10/2026: **nenhuma vulnerabilidade alcançável pelo código**. Ele aponta o GO-2026-5932, no pacote `openpgp` de `golang.org/x/crypto`, que o projeto não usa (só usamos `bcrypt`).
@@ -153,9 +153,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - `govulncheck` roda na CI em todo PR.
 - Dependabot abre PR semanal para a `develop` com atualizações de módulos Go, imagens Docker e GitHub Actions.
 - As GitHub Actions são fixadas pelo hash do commit, não pela tag, porque tags podem ser trocadas por quem invadir o repositório da action.
-
-**Falta**
-- Varredura da imagem Docker (Trivy) na CI.
+- Trivy varre a imagem final na CI e falha o PR em vulnerabilidade HIGH ou CRITICAL que já tenha correção.
 
 ## 14. Tokens mal otimizados — ✅
 

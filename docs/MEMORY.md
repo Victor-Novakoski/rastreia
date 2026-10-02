@@ -4,7 +4,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 3 (front-end) concluída. Próximo: Trivy (etapa 4) e tempo real (etapa 5). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 4 (CI) fechada com o Trivy. Próximo: tempo real (etapa 5). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
