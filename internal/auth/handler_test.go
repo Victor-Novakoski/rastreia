@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -147,4 +148,22 @@ func TestRefreshAndLogout(t *testing.T) {
 	rec = post(h.Refresh, testOrigin, second)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code, "session ended")
 	assert.Equal(t, -1, refreshCookie(t, rec).MaxAge, "invalid session clears the cookie")
+}
+
+type brokenGuard struct{ *LoginGuard }
+
+func (brokenGuard) Check(context.Context, string) (time.Duration, error) {
+	return 0, errors.New("redis down")
+}
+
+func TestLogin_WithoutGuardRefuses(t *testing.T) {
+	hash, err := HashPassword("correct-horse")
+	require.NoError(t, err)
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	h := NewHandler(users, NewTokens(testSecret, time.Hour), brokenGuard{NewLoginGuard()}, NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
+
+	rec := httptest.NewRecorder()
+	h.Login(rec, httptest.NewRequest(http.MethodPost, "/auth/login",
+		strings.NewReader(`{"email":"ana@example.com","password":"correct-horse"}`)))
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "no login without brute-force protection")
 }

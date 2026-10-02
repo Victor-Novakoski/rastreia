@@ -24,7 +24,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
 | 13 | Dependências vulneráveis | 🟡 | Média | Biblioteca de terceiros com falha de segurança conhecida. |
 | 14 | Tokens | ✅ | — | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
-| 15 | Rate limit | 🟡 | Etapa 5 (Redis) | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
+| 15 | Rate limit | ✅ | Etapa 5 | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
 | 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
 | 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
 | 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
@@ -105,7 +105,7 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Limite de 10 tentativas de login por minuto por IP, com 429 e `Retry-After`.
 - Bloqueio por e-mail: depois de 5 senhas erradas, o e-mail fica bloqueado por 1 minuto, e o tempo dobra a cada nova falha até 15 minutos. Vale também para e-mails que não existem, para o bloqueio não revelar quem tem conta. Senha certa zera o contador.
 - Cada falha é registrada no log com o IP e uma impressão do e-mail (não o e-mail em si).
-- O bloqueio fica em memória; quando houver mais de uma instância da API, passa para o Redis.
+- Com `REDIS_URL`, o contador fica no Redis e vale para todas as instâncias, numa operação atômica (script Lua). As chaves levam um hash SHA-256 do e-mail, nunca o e-mail. Se o Redis não responde, o login devolve 503 em vez de seguir sem proteção.
 
 ## 9. Bloquear durante envio (envio duplicado) — 🟡
 
@@ -165,15 +165,15 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Falta:** revogar as sessões ao trocar a senha ou desativar o usuário, quando essas funções existirem. No front, o access token fica só em memória (item 20).
 
-## 15. Rate limit — 🟡
+## 15. Rate limit — ✅
 
 **Feito**
 - Limite global de 120 requisições por minuto por IP e de 10 por minuto no login, com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
 - Limite próprio de 30 por minuto por IP no rastreio público (`/public/tracking/{code}`), para dificultar a varredura de códigos.
 - O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23).
-
-**Falta**
-- Mover os contadores para o Redis quando houver mais de uma instância.
+- A página de rastreio e o WebSocket dela dividem o mesmo limite.
+- Com `REDIS_URL`, os contadores ficam no Redis e valem para todas as instâncias; se o Redis cair, cada instância volta a contar em memória até ele voltar.
+- Em produção o Redis não deve ficar exposto na internet; no compose de desenvolvimento ele só escuta em `127.0.0.1`.
 
 ## 16. Dados sensíveis expostos — 🟡
 

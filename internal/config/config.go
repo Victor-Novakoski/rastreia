@@ -26,6 +26,9 @@ type Config struct {
 	// enable it behind a proxy that sets that header, or clients can fake
 	// their IP and dodge the rate limit.
 	TrustProxy bool `mapstructure:"TRUST_PROXY"`
+	// RedisURL (redis://...) shares live updates, rate limits and login
+	// lockouts between API instances. Empty keeps them in memory.
+	RedisURL string `mapstructure:"REDIS_URL"`
 }
 
 // Values shipped in .env.example and docker-compose.yml. Production must override them.
@@ -60,7 +63,7 @@ func Load() (Config, error) {
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("CORS_ORIGINS", "http://localhost:5173")
 	v.SetDefault("TRUST_PROXY", false)
-	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD"} {
+	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "REDIS_URL"} {
 		_ = v.BindEnv(key)
 	}
 	v.AutomaticEnv()
