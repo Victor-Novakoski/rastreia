@@ -84,6 +84,12 @@ components:
       properties:
         status: { $ref: "#/components/schemas/Status" }
         note: { type: string, maxLength: 500, description: Required when status is failed }
+    Session:
+      type: object
+      properties:
+        token: { type: string, description: Access token for the Authorization header }
+        role: { type: string, enum: [admin, driver] }
+        expires_in: { type: integer, description: Access token lifetime in seconds, example: 900 }
     Tracking:
       type: object
       description: Public view of a delivery. No e-mail, address, last name, driver or notes.
@@ -143,7 +149,10 @@ paths:
         "503": { description: Database unavailable }
   /auth/login:
     post:
-      summary: Log in and get a JWT
+      summary: Log in and get a short-lived JWT plus a refresh cookie
+      description: |
+        The access token lasts JWT_TTL (15 minutes by default). The refresh token comes in the
+        rastreia_refresh cookie (HttpOnly, SameSite=Strict, Path=/auth) and is used on /auth/refresh.
       requestBody:
         required: true
         content:
@@ -156,16 +165,35 @@ paths:
                 password: { type: string }
       responses:
         "200":
-          description: Logged in
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token: { type: string }
-                  role: { type: string, enum: [admin, driver] }
+          description: Logged in. Sets the rastreia_refresh cookie.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/refresh:
+    post:
+      summary: Trade the refresh cookie for a new access token and a new cookie
+      description: |
+        Each refresh token works once. Reusing one revokes the whole session. Requires an Origin
+        listed in CORS_ORIGINS; the browser must send the request with credentials.
+      parameters:
+        - { name: rastreia_refresh, in: cookie, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: New tokens. Sets a new rastreia_refresh cookie.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/logout:
+    post:
+      summary: Revoke the session and clear the refresh cookie
+      description: Answers 204 even without a cookie. Requires an Origin listed in CORS_ORIGINS.
+      parameters:
+        - { name: rastreia_refresh, in: cookie, required: false, schema: { type: string } }
+      responses:
+        "204": { description: Logged out }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /drivers:
     get:

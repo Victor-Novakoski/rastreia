@@ -10,10 +10,12 @@ import (
 )
 
 type Config struct {
-	Port          string        `mapstructure:"PORT"`
-	DatabaseURL   string        `mapstructure:"DATABASE_URL"`
-	JWTSecret     string        `mapstructure:"JWT_SECRET"`
-	JWTTTL        time.Duration `mapstructure:"JWT_TTL"`
+	Port        string        `mapstructure:"PORT"`
+	DatabaseURL string        `mapstructure:"DATABASE_URL"`
+	JWTSecret   string        `mapstructure:"JWT_SECRET"`
+	JWTTTL      time.Duration `mapstructure:"JWT_TTL"`
+	// RefreshTTL is how long a session survives without being used.
+	RefreshTTL    time.Duration `mapstructure:"REFRESH_TTL"`
 	AdminName     string        `mapstructure:"ADMIN_NAME"`
 	AdminEmail    string        `mapstructure:"ADMIN_EMAIL"`
 	AdminPassword string        `mapstructure:"ADMIN_PASSWORD"`
@@ -52,7 +54,8 @@ func (c Config) AllowedOrigins() []string {
 func Load() (Config, error) {
 	v := viper.New()
 	v.SetDefault("PORT", "8080")
-	v.SetDefault("JWT_TTL", "24h")
+	v.SetDefault("JWT_TTL", "15m")
+	v.SetDefault("REFRESH_TTL", "168h")
 	v.SetDefault("ADMIN_NAME", "Admin")
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("CORS_ORIGINS", "http://localhost:5173")

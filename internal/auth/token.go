@@ -13,6 +13,9 @@ import (
 const (
 	RoleAdmin  = "admin"
 	RoleDriver = "driver"
+
+	issuer   = "rastreia"
+	audience = "rastreia-api"
 )
 
 // Claims is what the API knows about the caller after authentication.
@@ -41,6 +44,8 @@ func (t *Tokens) Issue(c Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenClaims{
 		Role: c.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Audience:  jwt.ClaimStrings{audience},
 			Subject:   strconv.FormatInt(c.UserID, 10),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(t.ttl)),
@@ -53,7 +58,8 @@ func (t *Tokens) Parse(raw string) (Claims, error) {
 	var tc tokenClaims
 	_, err := jwt.ParseWithClaims(raw, &tc, func(*jwt.Token) (any, error) {
 		return t.secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithTimeFunc(t.now))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithTimeFunc(t.now),
+		jwt.WithIssuer(issuer), jwt.WithAudience(audience), jwt.WithExpirationRequired())
 	if err != nil {
 		return Claims{}, err
 	}

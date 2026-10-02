@@ -36,7 +36,9 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions},
 		AllowedHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key"},
 		ExposedHeaders: []string{"Retry-After", "Idempotent-Replayed"},
-		MaxAge:         600,
+		// The refresh token travels in a cookie (SECURITY.md #14 and #18).
+		AllowCredentials: true,
+		MaxAge:           600,
 	})
 }
 

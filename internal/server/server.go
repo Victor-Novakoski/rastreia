@@ -69,6 +69,8 @@ func New(d Deps) http.Handler {
 	})
 
 	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
+	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
+	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
 	// Its own, tighter limit makes guessing tracking codes slow.
 	r.With(rateLimit(opts.TrackingRateLimit)).Get("/public/tracking/{code}", d.Deliveries.Track)
 

@@ -107,6 +107,7 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | --- | --- | --- |
 | GET | `/health` | público |
 | POST | `/auth/login` | admin e motorista |
+| POST | `/auth/refresh`, `/auth/logout` | admin e motorista (cookie de sessão) |
 | GET, POST | `/drivers` | admin |
 | GET, POST | `/deliveries` | admin |
 | GET, PATCH | `/deliveries/{id}` | admin |

@@ -28,7 +28,7 @@ func newTestServer(opts Options) http.Handler {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
 	return New(Deps{
 		Tokens:     tokens,
-		Auth:       auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard()),
+		Auth:       auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{}),
 		Users:      user.NewHandler(user.NewService(nil)),
 		Deliveries: delivery.NewHandler(delivery.NewService(nil)),
 		Ready:      func(*http.Request) error { return nil },
@@ -63,6 +63,7 @@ func TestCORS(t *testing.T) {
 
 	rec := get(h, "/health", map[string]string{"Origin": "https://app.rastreia.dev"})
 	assert.Equal(t, "https://app.rastreia.dev", rec.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"), "the refresh cookie needs it")
 
 	rec = get(h, "/health", map[string]string{"Origin": "https://evil.example"})
 	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
