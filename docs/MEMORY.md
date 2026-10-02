@@ -4,13 +4,19 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 1, 1.5 e 2 concluídas; próxima é a 3 (front-end). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 3 (front-end) em andamento: base do front e rastreio público prontos. Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
-- **Atualizado em:** 01/10/2026.
+- **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — Front em `web/`, no mesmo repositório.** *Um PR muda API e tela juntos, e a CI confere os dois.* (repositório separado)
+- **2026-10-02 — Vite + React + TypeScript + Tailwind, com oxlint e Vitest.** *Stack padrão do mercado e rápida; oxlint veio no template do Vite e substitui o ESLint.* (Next.js: sem SSR necessário, o front é estático numa CDN)
+- **2026-10-02 — React Router, sem biblioteca de estado ou de requisições por enquanto.** *Uma página pública só pede um `fetch`; TanStack Query entra se o painel precisar de cache.* (RULES: nada "para o futuro")
+- **2026-10-02 — Fonte do sistema e ícones SVG próprios.** *Página pública abre rápido em rede ruim e não depende de CDN externa, o que facilita a CSP.* (Inter via Google Fonts, lucide-react)
+- **2026-10-02 — Front chama a API direto pela `VITE_API_URL`.** *O CORS já aceita `http://localhost:5173`; em produção o front fica na CDN e a API em outro domínio.* (proxy do Vite)
 
 - **2026-10-01 — Conventional Commits e CI no GitHub Actions.** *Histórico legível e todo PR conferido (lint, sqlc, testes, imagem, govulncheck, gitleaks, título do PR).* Actions fixadas por hash do commit.
 - **2026-10-01 — IP do cliente atrás de proxy = último valor do `X-Forwarded-For`.** *O `middleware.RealIP` do chi usa o primeiro, que o cliente pode falsificar (achado pelo golangci-lint).* (chi RealIP, httprate KeyByRealIP)

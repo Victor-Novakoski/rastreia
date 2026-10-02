@@ -45,12 +45,13 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 
 ## Etapa 3 — Front-end (React + TypeScript)
 
-- [ ] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
+- [x] Base do front em `web/` (Vite, React, TypeScript, Tailwind, Vitest), no `docker compose up` e na CI
+- [x] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
 - [ ] Access token curto + refresh token rotativo em cookie `HttpOnly` (#10, #14, #18)
 - [ ] CORS com lista de origens por variável de ambiente (#19)
 - [ ] Painel admin
 - [ ] App do motorista (mobile first)
-- [ ] Página pública de rastreio
+- [x] Página pública de rastreio
 - [ ] Validação nos formulários e bloqueio durante envio (#2, #9)
 - [ ] CSP e regras contra XSS (#20)
 
@@ -63,6 +64,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Template de PR, `.editorconfig` e licença MIT
 - [ ] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
 - [ ] Varredura da imagem Docker (Trivy)
+- [ ] Marcar o check do front como obrigatório no ruleset
 - [x] Badge da CI no README
 
 ## Etapa 5 — Tempo real

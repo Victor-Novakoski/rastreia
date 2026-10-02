@@ -44,6 +44,10 @@ internal/
   apperr/             erros de domínio (validação, não encontrado, conflito)
   httpx/              helpers HTTP: JSON, decode seguro, mapeamento de erros
   server/             montagem das rotas e middlewares globais
+web/                  front-end (Vite, React, TypeScript, Tailwind)
+  src/lib/            chamadas à API, status e formatação
+  src/components/     componentes visuais (DESIGN.md)
+  src/pages/          uma tela por rota
 docs/                 esta documentação
 ```
 
