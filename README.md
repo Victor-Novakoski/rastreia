@@ -36,7 +36,7 @@ Precisa só de Docker.
 docker compose up --build
 ```
 
-A API sobe em `http://localhost:8080` e o front em `http://localhost:5173` (o rastreio público fica em `/rastreio`). A API já cria um admin de teste:
+A API sobe em `http://localhost:8080` e o front em `http://localhost:5173` (painel em `/admin`, login em `/entrar` e rastreio público em `/rastreio`). A API já cria um admin de teste:
 
 | E-mail | Senha |
 | --- | --- |

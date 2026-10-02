@@ -48,12 +48,13 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Base do front em `web/` (Vite, React, TypeScript, Tailwind, Vitest), no `docker compose up` e na CI
 - [x] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
 - [x] Access token curto + refresh token rotativo em cookie `HttpOnly` na API (#10, #14, #18)
-- [ ] Front renova o access token pelo `/auth/refresh` e o guarda só em memória (#14, #20)
+- [x] Front renova o access token pelo `/auth/refresh` e o guarda só em memória (#14, #20)
 - [x] CORS com lista de origens por variável de ambiente, com `credentials` para o cookie (#19)
-- [ ] Painel admin
+- [x] Painel admin: login, entregas (filtro, paginação, criação, edição, troca de status) e motoristas
 - [ ] App do motorista (mobile first)
 - [x] Página pública de rastreio
-- [ ] Validação nos formulários e bloqueio durante envio (#2, #9)
+- [x] Validação nos formulários e bloqueio durante envio (#2, #9)
+- [ ] Busca de entrega por código ou destinatário no painel (precisa de filtro na API)
 - [ ] CSP e regras contra XSS (#20)
 
 ## Etapa 4 — CI (GitHub Actions) 🟡
