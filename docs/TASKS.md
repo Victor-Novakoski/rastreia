@@ -70,7 +70,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 
 ## Etapa 5 — Tempo real
 
-- [ ] WebSocket para rastreio público e painel
+- [x] WebSocket para rastreio público e painel
 - [ ] Redis para pub/sub entre instâncias e rate limit compartilhado (#15)
 
 ## Etapa 6 — Notificações

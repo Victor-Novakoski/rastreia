@@ -1,7 +1,8 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { adminSession, mockApi, renderApp } from '../../test/render'
+import { FakeWebSocket } from '../../test/websocket'
 
 const delivery = {
   id: 1,
@@ -124,5 +125,26 @@ describe('painel', () => {
     mockApi({ 'POST /auth/refresh': () => [200, { ...adminSession, role: 'driver' }], 'GET /me/deliveries': () => [200, []] })
     renderApp('/admin/entregas')
     expect(await screen.findByRole('heading', { name: 'Para fazer (0)' })).toBeInTheDocument()
+  })
+
+  it('recarrega a lista quando o WebSocket avisa de uma mudança', async () => {
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, adminSession],
+      'GET /deliveries': () => [200, [delivery]],
+      'GET /drivers': () => [200, drivers],
+    })
+    renderApp('/admin/entregas')
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+
+    await waitFor(() => expect(FakeWebSocket.last('/live/deliveries')).toBeDefined())
+    const ws = FakeWebSocket.last('/live/deliveries')!
+    act(() => ws.open())
+    expect(ws.sent).toEqual([JSON.stringify({ token: adminSession.token })])
+    expect(screen.getByRole('status')).toHaveTextContent('Ao vivo')
+
+    const lists = () => calls.filter((c) => c.path.startsWith('/deliveries')).length
+    const before = lists()
+    act(() => ws.receive({ delivery_id: 1, status: 'delivered' }))
+    await waitFor(() => expect(lists()).toBe(before + 1))
   })
 })

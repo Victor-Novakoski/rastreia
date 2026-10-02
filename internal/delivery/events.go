@@ -94,6 +94,7 @@ func (s *Service) AddEvent(ctx context.Context, actor auth.Claims, deliveryID in
 	if err != nil {
 		return Event{}, err
 	}
+	s.announce(ctx, deliveryID, d.TrackingCode, in.Status, true)
 	return eventFromStore(ev), nil
 }
 

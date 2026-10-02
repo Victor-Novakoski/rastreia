@@ -1,4 +1,4 @@
-const baseURL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/$/, '')
+export const baseURL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/$/, '')
 
 /** Erro no formato da API: { error, fields? } (DESIGN.md). Status 0 = sem conexão. */
 export class ApiError extends Error {
