@@ -1,11 +1,13 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AdminLayout } from './components/AdminLayout'
+import { DriverLayout } from './components/DriverLayout'
 import { RequireRole } from './components/RequireRole'
 import { DeliveriesPage } from './pages/admin/DeliveriesPage'
 import { DeliveryPage } from './pages/admin/DeliveryPage'
 import { DriversPage } from './pages/admin/DriversPage'
+import { DriverDeliveriesPage } from './pages/driver/DriverDeliveriesPage'
+import { DriverDeliveryPage } from './pages/driver/DriverDeliveryPage'
 import { NewDeliveryPage } from './pages/admin/NewDeliveryPage'
-import { DriverHomePage } from './pages/DriverHomePage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { TrackingPage } from './pages/TrackingPage'
@@ -36,10 +38,13 @@ export function App() {
         path="/motorista"
         element={
           <RequireRole role="driver">
-            <DriverHomePage />
+            <DriverLayout />
           </RequireRole>
         }
-      />
+      >
+        <Route index element={<DriverDeliveriesPage />} />
+        <Route path="entregas/:id" element={<DriverDeliveryPage />} />
+      </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
