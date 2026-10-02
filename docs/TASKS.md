@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: fechar a 4 (Trivy) e seguir para a 5 — Tempo real**
+**Etapa atual: 6 — Notificações**
 
 ## Etapa 1 — Base da API ✅
 
@@ -64,14 +64,14 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Dependabot para Go, Docker e Actions, apontando para a `develop` (#13)
 - [x] Template de PR, `.editorconfig` e licença MIT
 - [ ] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
-- [ ] Varredura da imagem Docker (Trivy)
+- [x] Varredura da imagem Docker (Trivy)
 - [ ] Marcar o check do front como obrigatório no ruleset
 - [x] Badge da CI no README
 
-## Etapa 5 — Tempo real
+## Etapa 5 — Tempo real ✅
 
-- [ ] WebSocket para rastreio público e painel
-- [ ] Redis para pub/sub entre instâncias e rate limit compartilhado (#15)
+- [x] WebSocket para rastreio público e painel
+- [x] Redis para pub/sub entre instâncias e rate limit compartilhado (#15)
 
 ## Etapa 6 — Notificações
 

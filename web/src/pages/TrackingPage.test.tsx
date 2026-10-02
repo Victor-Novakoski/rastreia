@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
+import { FakeWebSocket } from '../test/websocket'
 import { TrackingPage } from './TrackingPage'
 
 function renderAt(path: string) {
@@ -59,5 +60,42 @@ describe('TrackingPage', () => {
     renderAt('/rastreio/RS7K2M9QXA4P')
     expect(await screen.findByText(/Muitas consultas seguidas/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument()
+  })
+
+  it('atualiza sozinho pelo WebSocket depois de carregar', async () => {
+    const tracking = {
+      tracking_code: 'RS7K2M9QXA4P',
+      status: 'in_transit',
+      recipient_first_name: 'Maria',
+      updated_at: '2026-10-01T15:00:00Z',
+      events: [{ status: 'in_transit', created_at: '2026-10-01T15:00:00Z' }],
+    }
+    mockFetch(200, tracking)
+    renderAt('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
+
+    const ws = FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!
+    act(() => ws.open())
+    expect(screen.getByRole('status')).toHaveTextContent('Ao vivo')
+
+    act(() =>
+      ws.receive({
+        ...tracking,
+        status: 'delivered',
+        updated_at: '2026-10-01T18:00:00Z',
+        events: [...tracking.events, { status: 'delivered', created_at: '2026-10-01T18:00:00Z' }],
+      }),
+    )
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Entregue')
+
+    act(() => ws.drop())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('código inexistente não abre WebSocket', async () => {
+    mockFetch(404, { error: 'not found' })
+    renderAt('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByText('Não encontramos essa entrega')).toBeInTheDocument()
+    expect(FakeWebSocket.instances).toHaveLength(0)
   })
 })

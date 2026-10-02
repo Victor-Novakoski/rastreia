@@ -1,11 +1,14 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	httprateredis "github.com/go-chi/httprate-redis"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
 )
@@ -44,10 +47,24 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 
 // rateLimit allows requests per minute per client IP, taken from
 // r.RemoteAddr (already rewritten by trustedProxy when the API is behind one).
-func rateLimit(requests int) func(http.Handler) http.Handler {
-	return httprate.LimitBy(requests, time.Minute, remoteIP,
+// With a Redis client the count is shared by every API instance, and name
+// keeps each limit's keys apart. If Redis stops answering, each instance
+// counts in memory until it is back.
+func rateLimit(rdb redis.UniversalClient, name string, requests int) func(http.Handler) http.Handler {
+	opts := []httprate.Option{
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusTooManyRequests, "too many requests, try again later")
 		}),
-	)
+	}
+	if rdb != nil {
+		opts = append(opts, httprateredis.WithRedisLimitCounter(&httprateredis.Config{
+			Client:       rdb,
+			PrefixKey:    "rastreia:rate:" + name,
+			WindowLength: time.Minute,
+			OnFallbackChange: func(activated bool) {
+				slog.Warn("rate limit fallback to memory", "limit", name, "active", activated)
+			},
+		}))
+	}
+	return httprate.LimitBy(requests, time.Minute, remoteIP, opts...)
 }

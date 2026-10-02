@@ -57,18 +57,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [apply],
   )
 
+  const accessToken = useCallback(
+    async (renew: boolean) => {
+      if (!renew) return sessionRef.current?.token ?? null
+      const session = await refreshSession()
+      apply(session)
+      return session?.token ?? null
+    },
+    [apply],
+  )
+
   const value = useMemo(
     () => ({
       state,
       login,
       logout,
       api,
+      accessToken,
       retry: () => {
         setState({ status: 'loading' })
         setAttempt((n) => n + 1)
       },
     }),
-    [state, login, logout, api],
+    [state, login, logout, api, accessToken],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

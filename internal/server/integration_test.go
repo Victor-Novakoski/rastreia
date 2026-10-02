@@ -7,16 +7,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/testdb"
+	"github.com/Victor-Novakoski/rastreia/internal/testredis"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
 
@@ -30,20 +35,57 @@ type testAPI struct {
 	admin   string
 	driverA string
 	driverB string
+	broker  *countingBroker
+	pool    *pgxpool.Pool
+	tokens  *auth.Tokens
+	opts    Options
 }
 
+// newInstance builds the router as cmd/api does, on a shared database.
+func newInstance(t *testing.T, pool *pgxpool.Pool, tokens *auth.Tokens, opts Options) (http.Handler, *countingBroker) {
+	var (
+		b     realtime.Broker = realtime.NewLocal()
+		guard auth.Guard      = auth.NewLoginGuard()
+	)
+	if opts.Redis != nil {
+		rb, err := realtime.NewRedis(t.Context(), opts.Redis)
+		require.NoError(t, err)
+		b, guard = rb, auth.NewRedisGuard(opts.Redis)
+	}
+	broker := &countingBroker{Broker: b}
+	q := store.New(pool)
+	deliveries := delivery.NewService(delivery.NewPGStore(pool)).WithPublisher(broker)
+	live := realtime.NewServer(t.Context(), broker, realtime.Options{Origins: []string{testOrigin}})
+	return New(Deps{
+		Tokens:     tokens,
+		Auth:       auth.NewHandler(q, tokens, guard, auth.NewSessions(q, time.Hour), auth.CookieOptions{AllowedOrigins: []string{testOrigin}}),
+		Users:      user.NewHandler(user.NewService(q)),
+		Deliveries: delivery.NewHandler(deliveries),
+		Live:       delivery.NewLiveHandler(deliveries, live, tokens),
+		Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
+		Options:    opts,
+	}), broker
+}
+
+// countingBroker tells tests when a WebSocket is listening, so a change is
+// not published before anyone subscribed.
+type countingBroker struct {
+	realtime.Broker
+	subs atomic.Int32
+}
+
+func (b *countingBroker) Subscribe(ctx context.Context, topic string) (<-chan []byte, error) {
+	defer b.subs.Add(1)
+	return b.Broker.Subscribe(ctx, topic)
+}
+
+// newAPI starts one API instance. With opts.Redis set, live updates and
+// login lockouts go through Redis too, as in production.
 func newAPI(t *testing.T, opts Options) *testAPI {
 	pool := testdb.New(t)
 	q := store.New(pool)
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
-	h := New(Deps{
-		Tokens:     tokens,
-		Auth:       auth.NewHandler(q, tokens, auth.NewLoginGuard(), auth.NewSessions(q, time.Hour), auth.CookieOptions{AllowedOrigins: []string{testOrigin}}),
-		Users:      user.NewHandler(user.NewService(q)),
-		Deliveries: delivery.NewHandler(delivery.NewService(delivery.NewPGStore(pool))),
-		Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
-		Options:    opts,
-	})
+	h, broker := newInstance(t, pool, tokens, opts)
 
 	token := func(name, role string) string {
 		u, err := q.CreateUser(context.Background(), store.CreateUserParams{
@@ -55,7 +97,7 @@ func newAPI(t *testing.T, opts Options) *testAPI {
 		return tok
 	}
 	return &testAPI{
-		t: t, h: h, q: q,
+		t: t, h: h, q: q, broker: broker, pool: pool, tokens: tokens, opts: opts,
 		admin:   token("Admin", auth.RoleAdmin),
 		driverA: token("Ana", auth.RoleDriver),
 		driverB: token("Bruno", auth.RoleDriver),
@@ -224,4 +266,125 @@ func TestIntegration_RefreshTokenRotation(t *testing.T) {
 	third := cookieOf(send("/auth/login", nil, `{"email":"carla@example.com","password":"senha-da-carla"}`))
 	assert.Equal(t, http.StatusNoContent, send("/auth/logout", third, "").Code)
 	assert.Equal(t, http.StatusUnauthorized, send("/auth/refresh", third, "").Code)
+}
+
+func TestIntegration_LiveUpdates(t *testing.T) {
+	a := newAPI(t, Options{})
+	srv := httptest.NewServer(a.h)
+	t.Cleanup(srv.Close)
+	dial := func(path string) (*websocket.Conn, int, error) { return dialWS(t, srv.URL, path) }
+	read := func(c *websocket.Conn) (string, error) { return readWS(t, c) }
+
+	var d delivery.Delivery
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
+		a.driverID("Ana"))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin, body, &d))
+
+	_, status, err := dial("/public/tracking/RSAAAAAAAAAA/live")
+	require.Error(t, err)
+	assert.Equal(t, http.StatusNotFound, status, "unknown codes are refused before the upgrade")
+
+	driverPanel, _, err := dial("/live/deliveries")
+	require.NoError(t, err)
+	require.NoError(t, driverPanel.Write(t.Context(), websocket.MessageText, []byte(`{"token":"`+a.driverA+`"}`)))
+	_, err = read(driverPanel)
+	assert.Equal(t, realtime.StatusUnauthorized, websocket.CloseStatus(err), "the panel stream is for admins only")
+
+	public, _, err := dial("/public/tracking/" + d.TrackingCode + "/live")
+	require.NoError(t, err)
+	panel, _, err := dial("/live/deliveries")
+	require.NoError(t, err)
+	require.NoError(t, panel.Write(t.Context(), websocket.MessageText, []byte(`{"token":"`+a.admin+`"}`)))
+	require.Eventually(t, func() bool { return a.broker.subs.Load() == 2 }, 5*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, fmt.Sprintf("/deliveries/%d/events", d.ID), a.driverA,
+		`{"status":"picked_up"}`, nil))
+
+	msg, err := read(public)
+	require.NoError(t, err)
+	var tr delivery.Tracking
+	require.NoError(t, json.Unmarshal([]byte(msg), &tr))
+	assert.Equal(t, delivery.StatusPickedUp, tr.Status)
+	for _, secret := range []string{"Souza", "maria@example.com", "Rua A"} {
+		assert.NotContains(t, msg, secret)
+	}
+
+	msg, err = read(panel)
+	require.NoError(t, err)
+	assert.JSONEq(t, fmt.Sprintf(`{"delivery_id":%d,"status":"picked_up"}`, d.ID), msg)
+}
+
+// dialWS opens a WebSocket from the front's origin and returns the HTTP
+// status of the handshake.
+func dialWS(t *testing.T, serverURL, path string) (*websocket.Conn, int, error) {
+	t.Helper()
+	c, res, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(serverURL, "http")+path, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {testOrigin}},
+	})
+	if c != nil {
+		t.Cleanup(func() { _ = c.CloseNow() })
+	}
+	status := 0
+	if res != nil {
+		status = res.StatusCode
+		if res.Body != nil {
+			_ = res.Body.Close()
+		}
+	}
+	return c, status, err
+}
+
+func readWS(t *testing.T, c *websocket.Conn) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	_, msg, err := c.Read(ctx)
+	return string(msg), err
+}
+
+// Two API instances on the same database and Redis, as behind a load
+// balancer: a change made on one reaches a browser on the other, and
+// limits and lockouts count requests to both.
+func TestIntegration_InstancesShareRedis(t *testing.T) {
+	a := newAPI(t, Options{Redis: testredis.New(t), TrackingRateLimit: 4})
+	other, otherBroker := newInstance(t, a.pool, a.tokens, a.opts)
+	srvB := httptest.NewServer(other)
+	t.Cleanup(srvB.Close)
+
+	var d delivery.Delivery
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
+		a.driverID("Ana"))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin, body, &d))
+
+	public, _, err := dialWS(t, srvB.URL, "/public/tracking/"+d.TrackingCode+"/live")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return otherBroker.subs.Load() == 1 }, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, fmt.Sprintf("/deliveries/%d/events", d.ID), a.driverA,
+		`{"status":"picked_up"}`, nil))
+	msg, err := readWS(t, public)
+	require.NoError(t, err)
+	assert.Contains(t, msg, `"status":"picked_up"`, "a change made on A reaches the browser on B")
+
+	send := func(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = "198.51.100.20:1234"
+		req.Header.Set("Origin", testOrigin)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	tracking := "/public/tracking/" + d.TrackingCode
+	for _, h := range []http.Handler{a.h, a.h, other, other} {
+		require.Equal(t, http.StatusOK, send(h, http.MethodGet, tracking, "").Code)
+	}
+	assert.Equal(t, http.StatusTooManyRequests, send(other, http.MethodGet, tracking, "").Code,
+		"the tracking limit counts lookups on both instances")
+
+	login := `{"email":"ana@example.com","password":"wrong"}`
+	for range 5 {
+		require.Equal(t, http.StatusUnauthorized, send(a.h, http.MethodPost, "/auth/login", login).Code)
+	}
+	rec := send(other, http.MethodPost, "/auth/login", login)
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.Contains(t, rec.Body.String(), "failed attempts", "an e-mail locked on A is locked on B")
 }

@@ -2,11 +2,13 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/Victor-Novakoski/rastreia/api"
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
@@ -20,14 +22,18 @@ type Deps struct {
 	Auth       *auth.Handler
 	Users      *user.Handler
 	Deliveries *delivery.Handler
-	Ready      func(r *http.Request) error
-	Options    Options
+	// Live serves the WebSocket routes; nil leaves them out.
+	Live    *delivery.LiveHandler
+	Ready   func(r *http.Request) error
+	Options Options
 }
 
 type Options struct {
 	Production  bool
 	CORSOrigins []string
 	TrustProxy  bool
+	// Redis shares the rate limits between API instances; nil counts in memory.
+	Redis redis.UniversalClient
 	// Requests per minute per IP. Zero uses the defaults.
 	RateLimit         int
 	LoginRateLimit    int
@@ -53,52 +59,67 @@ func New(d Deps) http.Handler {
 	}
 	r.Use(middleware.Logger, middleware.Recoverer)
 	r.Use(securityHeaders(opts.Production), corsPolicy(opts.CORSOrigins))
-	r.Use(rateLimit(opts.RateLimit))
-	r.Use(middleware.Timeout(15 * time.Second))
+	limit := func(name string, requests int) func(http.Handler) http.Handler {
+		return rateLimit(opts.Redis, name, requests)
+	}
+	r.Use(limit("global", opts.RateLimit))
+	// One limit for the page and its WebSocket: both answer whether a code exists.
+	tracking := limit("tracking", opts.TrackingRateLimit)
 
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		if err := d.Ready(r); err != nil {
-			httpx.Error(w, http.StatusServiceUnavailable, "database unavailable")
-			return
-		}
-		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/yaml")
-		_, _ = w.Write(api.OpenAPI)
-	})
-
-	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
-	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
-	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
-	// Its own, tighter limit makes guessing tracking codes slow.
-	r.With(rateLimit(opts.TrackingRateLimit)).Get("/public/tracking/{code}", d.Deliveries.Track)
+	// WebSockets stay open, so they skip the request timeout below.
+	if d.Live != nil {
+		r.With(tracking).Get("/public/tracking/{code}/live", d.Live.Track)
+		r.Get("/live/deliveries", d.Live.Panel)
+	}
 
 	r.Group(func(r chi.Router) {
-		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
+		r.Use(middleware.Timeout(15 * time.Second))
 
-		r.Get("/drivers", d.Users.ListDrivers)
-		r.Post("/drivers", d.Users.CreateDriver)
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			if err := d.Ready(r); err != nil {
+				slog.Error("health", "err", err)
+				httpx.Error(w, http.StatusServiceUnavailable, "dependency unavailable")
+				return
+			}
+			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		})
+		r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/yaml")
+			_, _ = w.Write(api.OpenAPI)
+		})
 
-		r.Get("/deliveries", d.Deliveries.List)
-		r.Post("/deliveries", d.Deliveries.Create)
-		r.Get("/deliveries/{id}", d.Deliveries.Get)
-		r.Patch("/deliveries/{id}", d.Deliveries.Update)
-	})
+		r.With(limit("login", opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
+		r.With(limit("refresh", opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
+		r.With(limit("logout", opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
+		// Its own, tighter limit makes guessing tracking codes slow.
+		r.With(tracking).Get("/public/tracking/{code}", d.Deliveries.Track)
 
-	// Drivers reach only their own deliveries here; the service answers 404
-	// for anyone else's.
-	r.Group(func(r chi.Router) {
-		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin, auth.RoleDriver))
+		r.Group(func(r chi.Router) {
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
 
-		r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
-		r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)
-	})
+			r.Get("/drivers", d.Users.ListDrivers)
+			r.Post("/drivers", d.Users.CreateDriver)
 
-	r.Group(func(r chi.Router) {
-		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleDriver))
+			r.Get("/deliveries", d.Deliveries.List)
+			r.Post("/deliveries", d.Deliveries.Create)
+			r.Get("/deliveries/{id}", d.Deliveries.Get)
+			r.Patch("/deliveries/{id}", d.Deliveries.Update)
+		})
 
-		r.Get("/me/deliveries", d.Deliveries.ListMine)
+		// Drivers reach only their own deliveries here; the service answers 404
+		// for anyone else's.
+		r.Group(func(r chi.Router) {
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin, auth.RoleDriver))
+
+			r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
+			r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleDriver))
+
+			r.Get("/me/deliveries", d.Deliveries.ListMine)
+		})
 	})
 
 	return r

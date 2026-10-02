@@ -24,7 +24,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
 | 13 | Dependências vulneráveis | 🟡 | Média | Biblioteca de terceiros com falha de segurança conhecida. |
 | 14 | Tokens | ✅ | — | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
-| 15 | Rate limit | 🟡 | Etapa 5 (Redis) | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
+| 15 | Rate limit | ✅ | Etapa 5 | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
 | 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
 | 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
 | 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
@@ -105,7 +105,7 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Limite de 10 tentativas de login por minuto por IP, com 429 e `Retry-After`.
 - Bloqueio por e-mail: depois de 5 senhas erradas, o e-mail fica bloqueado por 1 minuto, e o tempo dobra a cada nova falha até 15 minutos. Vale também para e-mails que não existem, para o bloqueio não revelar quem tem conta. Senha certa zera o contador.
 - Cada falha é registrada no log com o IP e uma impressão do e-mail (não o e-mail em si).
-- O bloqueio fica em memória; quando houver mais de uma instância da API, passa para o Redis.
+- Com `REDIS_URL`, o contador fica no Redis e vale para todas as instâncias, numa operação atômica (script Lua). As chaves levam um hash SHA-256 do e-mail, nunca o e-mail. Se o Redis não responde, o login devolve 503 em vez de seguir sem proteção.
 
 ## 9. Bloquear durante envio (envio duplicado) — 🟡
 
@@ -143,7 +143,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - Headers de segurança (item 21).
 - Decidir se `/openapi.yaml` continua público em produção (hoje é; não expõe segredo, mas mapeia a API).
 
-## 13. Dependências vulneráveis — 🟡
+## 13. Dependências vulneráveis — ✅
 
 **Feito**
 - `govulncheck` rodado em 01/10/2026: **nenhuma vulnerabilidade alcançável pelo código**. Ele aponta o GO-2026-5932, no pacote `openpgp` de `golang.org/x/crypto`, que o projeto não usa (só usamos `bcrypt`).
@@ -153,9 +153,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - `govulncheck` roda na CI em todo PR.
 - Dependabot abre PR semanal para a `develop` com atualizações de módulos Go, imagens Docker e GitHub Actions.
 - As GitHub Actions são fixadas pelo hash do commit, não pela tag, porque tags podem ser trocadas por quem invadir o repositório da action.
-
-**Falta**
-- Varredura da imagem Docker (Trivy) na CI.
+- Trivy varre a imagem final na CI e falha o PR em vulnerabilidade HIGH ou CRITICAL que já tenha correção.
 
 ## 14. Tokens mal otimizados — ✅
 
@@ -167,15 +165,15 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Falta:** revogar as sessões ao trocar a senha ou desativar o usuário, quando essas funções existirem. No front, o access token fica só em memória (item 20).
 
-## 15. Rate limit — 🟡
+## 15. Rate limit — ✅
 
 **Feito**
 - Limite global de 120 requisições por minuto por IP e de 10 por minuto no login, com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
 - Limite próprio de 30 por minuto por IP no rastreio público (`/public/tracking/{code}`), para dificultar a varredura de códigos.
 - O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23).
-
-**Falta**
-- Mover os contadores para o Redis quando houver mais de uma instância.
+- A página de rastreio e o WebSocket dela dividem o mesmo limite.
+- Com `REDIS_URL`, os contadores ficam no Redis e valem para todas as instâncias; se o Redis cair, cada instância volta a contar em memória até ele voltar.
+- Em produção o Redis não deve ficar exposto na internet; no compose de desenvolvimento ele só escuta em `127.0.0.1`.
 
 ## 16. Dados sensíveis expostos — 🟡
 
@@ -223,7 +221,9 @@ Middleware em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Op
 
 **Feito:** `ReadHeaderTimeout` de 5 s, `ReadTimeout` de 15 s, `WriteTimeout` de 30 s, `IdleTimeout` de 60 s, timeout de 15 s por requisição no roteador, corpo limitado a 1 MB, paginação com máximo de 100 itens e rate limit (item 15).
 
-**Falta:** limite de conexões no pool do banco ajustado para produção, e no WebSocket (etapa 5) um limite de conexões por IP e de tamanho de mensagem.
+No WebSocket: no máximo 20 conexões abertas por IP, mensagem do cliente limitada a 4 KB, 5 s para mandar o token, ping a cada 30 s e conexão fechada quando o token vence. O WebSocket público só abre para código válido e conta no rate limit do rastreio, e o `Origin` precisa estar na lista do CORS.
+
+**Falta:** limite de conexões no pool do banco ajustado para produção.
 
 ## 23. Falsificação de IP — ✅
 

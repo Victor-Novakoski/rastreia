@@ -15,6 +15,8 @@ export type AuthContextValue = {
   retry: () => void
   /** Requisição autenticada. Um 401 renova o token uma vez e repete a chamada. */
   api: <T>(path: string, opts?: Omit<RequestOptions, 'token' | 'withCredentials'>) => Promise<T>
+  /** Access token para o WebSocket; `renew` troca por um novo antes. Null sem sessão. */
+  accessToken: (renew: boolean) => Promise<string | null>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

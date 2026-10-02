@@ -52,6 +52,9 @@ func (s *Service) CreateIdempotent(ctx context.Context, actorID int64, key strin
 		}
 		return q.SetIdempotencyKeyDelivery(ctx, store.SetIdempotencyKeyDeliveryParams{UserID: actorID, Key: key, DeliveryID: &d.ID})
 	})
+	if err == nil && !replayed {
+		s.announce(ctx, d.ID, d.TrackingCode, d.Status, false)
+	}
 	return d, replayed, err
 }
 

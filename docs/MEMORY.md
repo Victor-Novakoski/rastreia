@@ -4,13 +4,19 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 3 (front-end) concluída. Próximo: Trivy (etapa 4) e tempo real (etapa 5). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 5 (tempo real) concluída: WebSocket e Redis. Próximo: notificações (etapa 6). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — Tempo real por WebSocket (`coder/websocket`), servidor só envia.** *O rastreio público recebe o mesmo corpo do `GET`, então a página não refaz a consulta; o painel recebe só `{delivery_id, status}` e invalida o cache do TanStack Query, sem dado pessoal no fio.* (SSE, que serviria e é mais simples, mas o PRD pede WebSocket; polling)
+- **2026-10-02 — Token do painel na primeira mensagem do WebSocket, não na URL.** *O navegador não manda `Authorization` no WebSocket, e token na URL vai parar em log. A API fecha com o código 4001 quando o token vence, e o front renova e reconecta.* (cookie, que exigiria mais checagem de CSRF; subprotocolo)
+- **2026-10-02 — Redis opcional (`REDIS_URL`): com ele, tempo real, rate limit e bloqueio de login valem para todas as instâncias; sem ele, ficam em memória.** *Rodar a API sozinha (`make run`, testes) continua simples, e o compose sobe o Redis.* (Redis obrigatório)
+- **2026-10-02 — Uma inscrição por padrão (`PSUBSCRIBE rastreia:live:*`) por instância, que repassa para o broker em memória.** *Uma conexão no Redis por instância, não uma por navegador.* (um `SUBSCRIBE` por WebSocket)
+- **2026-10-02 — Sem o Redis, o login responde 503; o rate limit cai para memória.** *Sem contador não há proteção contra força bruta, então o login espera; o rate limit em memória ainda protege cada instância.* (deixar logar sem contador)
 
 - **2026-10-02 — CSP do front numa `<meta>` injetada no build.** *O front vai ser estático numa CDN, e a política acompanha o HTML sem depender da configuração do servidor; só `frame-ancestors` precisa ir no cabeçalho.* (CSP só no cabeçalho da CDN; nonce, que exige servidor)
 
@@ -45,7 +51,7 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-01 — `failed` pode voltar para `in_transit`.** *Nova tentativa é comum em entrega; criar outra entrega quebraria o histórico e o link do cliente.*
 - **2026-10-01 — Sem foto de comprovante na v1.** *Evita upload (e seus riscos) até o fluxo principal estar pronto.*
 - **2026-10-01 — Link público expira 30 dias depois de concluída a entrega.** *Menos dado pessoal exposto (LGPD) sem atrapalhar o cliente.*
-- **2026-10-01 — Rate limit e bloqueio de login em memória.** *Uma instância só por enquanto; vão para o Redis quando houver mais de uma.* (httprate com Redis desde já)
+- **2026-10-01 — Rate limit e bloqueio de login em memória.** *Uma instância só por enquanto.* Substituída em 02/10 pelo Redis opcional.
 - **2026-10-01 — `TRUST_PROXY` liga/desliga a leitura de `X-Forwarded-For`.** *Mais simples que uma lista de proxies; em produção só há o load balancer na frente.* (`TRUSTED_PROXIES` com faixas de IP)
 - **2026-10-01 — Bloqueio de login conta e-mails inexistentes também.** *Senão o bloqueio revelaria quais e-mails têm conta.*
 - **2026-10-01 — Concorrência otimista na troca de status.** *O `UPDATE` confere o status anterior (`WHERE status = from_status`); dois eventos simultâneos não se sobrepõem e o perdedor recebe 409, sem lock explícito.* (`SELECT ... FOR UPDATE`)

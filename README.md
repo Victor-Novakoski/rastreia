@@ -10,11 +10,13 @@ Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o mot
 
 - **API:** Go, chi, pgx + sqlc, golang-migrate, Viper, JWT
 - **Front:** React, TypeScript, Vite, Tailwind CSS, React Router
-- **Banco:** PostgreSQL
-- **Testes:** testing + testify; integração com Postgres real via testcontainers; Vitest + Testing Library no front
+- **Banco:** PostgreSQL; Redis para tempo real, rate limit e bloqueio de login entre instâncias
+- **Testes:** testing + testify; integração com Postgres e Redis reais via testcontainers; Vitest + Testing Library no front
 - **Infra:** Docker e Docker Compose
 
-Próximas etapas: tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
+Atualização em tempo real por WebSocket na página de rastreio e no painel.
+
+Próximas etapas: fila de notificações com RabbitMQ e deploy na AWS.
 
 ## Documentação
 
@@ -114,6 +116,8 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | GET, POST | `/deliveries/{id}/events` | admin e motorista dono da entrega |
 | GET | `/me/deliveries` | motorista |
 | GET | `/public/tracking/{code}` | público (30 req/min por IP) |
+| GET | `/public/tracking/{code}/live` | público, WebSocket com cada mudança |
+| GET | `/live/deliveries` | admin, WebSocket do painel (token na primeira mensagem) |
 
 ## Estrutura
 
