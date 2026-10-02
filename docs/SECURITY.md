@@ -11,14 +11,14 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | # | Risco | Situação | Prioridade | O que é |
 | --- | --- | --- | --- | --- |
 | 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 | Senhas, chaves e segredos vazando por arquivo commitado, imagem Docker ou valor padrão usado em produção. |
-| 2 | Validação no front-end | ⚪ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
+| 2 | Validação no front-end | ✅ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
 | 3 | Validação no back-end | ✅ | — | A API confere tipo, formato e tamanho de tudo que recebe. É a validação que realmente protege. |
 | 4 | SQL Injection | ✅ | — | Texto enviado pelo usuário vira parte do comando SQL e consegue ler ou apagar dados do banco. |
 | 5 | Autenticação fraca | 🟡 | Baixa | Senha fraca ou previsível, login que dá pistas, ou credencial padrão que nunca foi trocada. |
 | 6 | IDOR | ✅ | — | Trocar o id na URL (ex.: /deliveries/2 por /deliveries/3) e acessar dado de outra pessoa. |
 | 7 | Senhas no banco | ✅ | — | Guardar a senha como texto no banco: se o banco vazar, todas as senhas vazam junto. |
 | 8 | Força bruta | ✅ | — | Tentar milhares de senhas seguidas até acertar. |
-| 9 | Envio duplicado | 🟡 | Etapa 3 (front) | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
+| 9 | Envio duplicado | ✅ | — | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
 | 10 | CSRF | ✅ | — | Outro site faz o navegador do usuário logado enviar uma ação para a API sem ele perceber. |
 | 11 | Upload sem validação | ⚪ | — | Arquivo malicioso disfarçado (ex.: script com extensão .jpg) ou grande demais para o servidor. |
 | 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
@@ -55,9 +55,9 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 **Falta**
 - Em produção (AWS), segredos no Secrets Manager ou SSM Parameter Store, nunca em arquivo.
 
-## 2. Validação no front-end — ⚪
+## 2. Validação no front-end — ✅
 
-Entra na etapa 3. Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
+Feito no painel admin: campos com `required`, `type="email"` e `maxLength` iguais aos limites da API, e os `fields` do 422 traduzidos e mostrados embaixo de cada campo (`web/src/lib/fields.ts`). Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
 
 ## 3. Validação no back-end — ✅
 
@@ -114,7 +114,7 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - A chave é reservada na mesma transação que cria a entrega, então duas requisições simultâneas com a mesma chave criam uma entrega só (teste de integração com 10 requisições em paralelo).
 - Eventos de status: transição repetida (ex.: `picked_up` → `picked_up`) responde 409, então reenviar não duplica histórico. Dois eventos simultâneos na mesma entrega: só um é aplicado, o outro recebe 409 (a troca de status confere o status anterior no `UPDATE`).
 
-**Front (etapa 3):** botão desabilitado e com indicador de carregamento enquanto a requisição não volta, e uma `Idempotency-Key` gerada por formulário.
+**Front (feito):** o `Button` fica desabilitado e com indicador enquanto a requisição não volta, e o formulário ignora um segundo envio. O formulário de nova entrega gera uma `Idempotency-Key` (`crypto.randomUUID()`), mantida se a rede falhar e trocada quando a API responde com erro.
 
 ## 10. CSRF — ✅
 

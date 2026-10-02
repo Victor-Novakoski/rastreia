@@ -96,5 +96,9 @@ Fonte do sistema (`system-ui`): nada para baixar, o que ajuda o rastreio públic
 - `Button`: altura mínima de 44 px; com `loading`, fica desabilitado e mostra o indicador.
 - `Spinner`: indicador de carregamento com texto para leitor de tela.
 - `PublicLayout`: cabeçalho e coluna estreita das páginas públicas.
+- `AdminLayout`: barra de navegação do painel (Entregas, Motoristas, Sair) e conteúdo até 1152 px.
+- `TextField`, `TextArea`, `SelectField`: rótulo, controle com 44 px de altura e erro embaixo, ligado por `aria-describedby`.
+- `Alert`: erro (`role="alert"`) ou sucesso (`role="status"`) no topo do formulário.
+- `Loading`, `LoadError`, `Empty`: os estados de carregando, erro (com "Tentar de novo") e vazio.
 
 Ícones são SVG próprios em `StatusIcon`, sem biblioteca.

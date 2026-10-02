@@ -21,3 +21,12 @@ export const toneClasses: Record<Tone, string> = {
   success: 'bg-success-bg text-success-fg',
   danger: 'bg-danger-bg text-danger-fg',
 }
+
+/** Próximos status permitidos, iguais aos da API (internal/delivery/events.go). */
+export const nextStatuses: Record<Status, Status[]> = {
+  pending: ['picked_up', 'failed'],
+  picked_up: ['in_transit', 'failed'],
+  in_transit: ['delivered', 'failed'],
+  delivered: [],
+  failed: ['in_transit'],
+}
