@@ -11,6 +11,17 @@ services:
       - go-mod:/go/pkg/mod
       - go-build:/root/.cache/go-build
 
+  worker:
+    image: rastreia-api-dev
+    build:
+      context: .
+      target: dev
+    entrypoint: ["air", "-c", ".air.toml", "--tmp_dir", "/tmp/air", "--build.cmd", "go build -o /tmp/air/worker ./cmd/worker", "--build.bin", "/tmp/air/worker"]
+    volumes:
+      - .:/src
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+
   web:
     image: node:22-alpine
     working_dir: /web

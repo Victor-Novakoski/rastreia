@@ -26,7 +26,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 14 | Tokens | ✅ | — | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
 | 15 | Rate limit | ✅ | Etapa 5 | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
 | 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
-| 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
+| 17 | SSRF | ✅ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
 | 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
 | 19 | CORS | ✅ | — | Regra do navegador que diz quais sites podem chamar a API. |
 | 20 | XSS | ✅ | — | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
@@ -36,7 +36,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 24 | Enumeração de e-mails | ✅ | — | Descobrir quais e-mails têm conta pela mensagem ou pelo tempo de resposta do login. |
 | 25 | Banco de dados exposto | 🟡 | Etapa 7 | Banco acessível pela rede ou pela internet, sem precisar passar pela API. |
 | 26 | Logs e auditoria | 🟡 | Média | Registrar quem fez o quê e os eventos suspeitos, para investigar e criar alertas. |
-| 27 | LGPD e retenção de dados | 🟡 | Etapa 6 | Lei de proteção de dados: coletar só o necessário, mostrar o mínimo e apagar quando não precisar mais. |
+| 27 | LGPD e retenção de dados | ✅ | — | Lei de proteção de dados: coletar só o necessário, mostrar o mínimo e apagar quando não precisar mais. |
 
 Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
@@ -185,9 +185,14 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - HTTPS obrigatório em produção (HSTS).
 - Banco exposto (item 25).
 
-## 17. SSRF — ⚪
+## 17. SSRF — ✅
 
-A API não faz requisições para URLs informadas pelo usuário. Se passar a fazer (webhook, geocodificação, imagem por URL):
+O único lugar que chama uma URL vinda de fora é o Web Push: o navegador entrega o `endpoint` da inscrição e o worker faz um POST nele. Feito:
+- O endpoint só é aceito com `https`, sem porta nem usuário, e com o host numa lista fechada dos serviços de push dos navegadores (Google, Mozilla, Microsoft, Apple). Qualquer outro host, IP ou `localhost` responde 422 (`internal/push`, testado).
+- O worker não segue redirecionamento e tem timeout de 15s.
+- A chave `p256dh` precisa ser um ponto válido da curva P-256, e há no máximo 10 navegadores por entrega.
+
+Se outra URL vinda do usuário aparecer (webhook, geocodificação, imagem por URL):
 - Lista de hosts permitidos.
 - Bloquear IPs privados, loopback e o endereço de metadados da nuvem (`169.254.169.254`), verificando o IP **depois** de resolver o DNS.
 - Timeout curto e sem seguir redirecionamentos.
@@ -252,14 +257,18 @@ Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, en
 - Auditoria de negócio da edição de entregas (`PATCH`). Mudanças de status já ficam em `delivery_events`, com quem fez e quando.
 - Alertas em produção para pico de falhas de login e de 5xx.
 
-## 27. LGPD e retenção de dados — 🟡
+## 27. LGPD e retenção de dados — ✅
 
 O sistema guarda nome, e-mail e endereço de destinatários.
 
 **Feito**
 - Rastreio público sem dados pessoais além do primeiro nome (item 16).
 - O link público deixa de funcionar 30 dias depois de a entrega ser entregue ou da última falha (responde 404, como um código inexistente).
+- E-mail e push de notificação levam só o primeiro nome, o código e o status, sem endereço nem observação do motorista. O nome passa pelo `html/template`, que escapa HTML.
+- As inscrições de push são apagadas quando a entrega é entregue ou quando o serviço de push diz que expiraram.
+
+- Retenção: `RETENTION_DAYS` (padrão 90, mínimo 31) dias depois de entregue ou da última falha, a API apaga nome, e-mail e endereço do destinatário e as observações dos eventos (texto livre que pode citar pessoas). A entrega e o histórico de status ficam para os relatórios, e a entrega anonimizada não aceita mais alteração (409), para os dados não voltarem. Roda a cada hora em `internal/retention`, testado com Postgres real.
+- Coleta só o necessário: sem CPF, telefone etc. enquanto não houver uso.
 
 **Falta**
-- Definir por quanto tempo dados pessoais de entregas concluídas ficam guardados no banco e anonimizar depois (etapa 6).
-- Coletar só o necessário (sem CPF, telefone etc. enquanto não houver uso).
+- Backups seguem a mesma regra quando existirem (etapa 7).

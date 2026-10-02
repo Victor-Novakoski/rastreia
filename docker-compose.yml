@@ -25,11 +25,33 @@ services:
       timeout: 3s
       retries: 15
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      # Painel do RabbitMQ em http://localhost:15672 (guest/guest).
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Captura os e-mails em desenvolvimento: caixa de entrada em http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
   api:
     build: .
     environment:
       DATABASE_URL: postgres://rastreia:rastreia@db:5432/rastreia?sslmode=disable
       REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      # Web Push liga com as chaves no .env (gere com: go run ./cmd/worker vapid).
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-at-least-32-chars}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rastreia.dev}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
@@ -40,6 +62,27 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  worker:
+    build: .
+    entrypoint: ["/worker"]
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      TRACKING_URL: http://localhost:5173/rastreio
+      DATABASE_URL: postgres://rastreia:rastreia@db:5432/rastreia?sslmode=disable
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
 
 volumes:
   db-data:

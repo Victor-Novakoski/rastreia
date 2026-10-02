@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 6 — Notificações**
+**Etapa atual: 7 — Deploy na AWS**
 
 ## Etapa 1 — Base da API ✅
 
@@ -73,10 +73,11 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] WebSocket para rastreio público e painel
 - [x] Redis para pub/sub entre instâncias e rate limit compartilhado (#15)
 
-## Etapa 6 — Notificações
+## Etapa 6 — Notificações ✅
 
-- [ ] RabbitMQ e worker de e-mail quando o status muda
-- [ ] Política de retenção e anonimização de dados (#27)
+- [x] RabbitMQ e worker de e-mail quando o status muda (outbox, retry e fila de falhas)
+- [x] Notificação no celular por Web Push (PWA instalável), como segundo consumidor do mesmo evento
+- [x] Política de retenção e anonimização de dados (#27)
 
 ## Etapa 7 — Deploy na AWS
 

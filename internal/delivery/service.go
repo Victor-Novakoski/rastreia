@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"net/mail"
 	"slices"
 	"strings"
@@ -59,6 +60,9 @@ type Delivery struct {
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 	CompletedAt    *time.Time `json:"completed_at"`
+	// AnonymizedAt is set when the recipient's data was erased (see
+	// internal/retention); such a delivery can no longer change.
+	AnonymizedAt *time.Time `json:"anonymized_at"`
 }
 
 func fromStore(d store.Delivery) Delivery {
@@ -224,6 +228,8 @@ func (in ListInput) page() (limit, offset int32) {
 
 }
 
+var errAnonymized = fmt.Errorf("%w: the recipient's data was erased, the delivery can no longer change", apperr.ErrConflict)
+
 func fromStoreList(rows []store.Delivery) []Delivery {
 	out := make([]Delivery, len(rows))
 	for i, d := range rows {
@@ -252,6 +258,13 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 	}
 	if err := v.Err(); err != nil {
 		return Delivery{}, err
+	}
+	cur, err := s.store.GetDelivery(ctx, id)
+	if err != nil {
+		return Delivery{}, notFound(err)
+	}
+	if cur.AnonymizedAt != nil {
+		return Delivery{}, errAnonymized
 	}
 
 	d, err := s.store.UpdateDelivery(ctx, store.UpdateDeliveryParams{

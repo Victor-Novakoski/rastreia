@@ -1,4 +1,4 @@
-.PHONY: up down run test test-short cover lint sqlc
+.PHONY: up down run run-worker test test-short cover lint sqlc
 
 up:        ## Sobe Postgres e API com Docker (com hot reload)
 	docker compose up --build -d
@@ -8,6 +8,9 @@ down:
 
 run:       ## Roda a API local (precisa do Postgres: docker compose up -d db)
 	go run ./cmd/api
+
+run-worker: ## Roda o worker de e-mail local (precisa de: docker compose up -d rabbitmq mailpit)
+	go run ./cmd/worker
 
 test:      ## Unitários + integração (precisa do Docker)
 	go test -race ./...

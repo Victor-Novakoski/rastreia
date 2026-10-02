@@ -11,9 +11,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/api ./cmd/worker
 
 FROM gcr.io/distroless/static-debian12:nonroot AS prod
-COPY --from=build /out/api /api
+# A mesma imagem roda a API (padrão) e o worker de notificações (entrypoint /worker).
+COPY --from=build /out/api /out/worker /
 EXPOSE 8080
 ENTRYPOINT ["/api"]

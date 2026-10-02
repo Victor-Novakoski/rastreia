@@ -29,6 +29,15 @@ type Config struct {
 	// RedisURL (redis://...) shares live updates, rate limits and login
 	// lockouts between API instances. Empty keeps them in memory.
 	RedisURL string `mapstructure:"REDIS_URL"`
+	// RabbitMQURL (amqp://...) turns on notifications: the API publishes
+	// every status change there. Empty keeps them in the outbox table.
+	RabbitMQURL string `mapstructure:"RABBITMQ_URL"`
+	// VAPIDPublicKey turns on Web Push: the front reads it from
+	// /public/push/key to subscribe. The worker holds the private key.
+	VAPIDPublicKey string `mapstructure:"VAPID_PUBLIC_KEY"`
+	// RetentionDays is how long the recipient's data stays after the
+	// delivery is finished; then it is erased (SECURITY.md #27).
+	RetentionDays int `mapstructure:"RETENTION_DAYS"`
 }
 
 // Values shipped in .env.example and docker-compose.yml. Production must override them.
@@ -63,7 +72,8 @@ func Load() (Config, error) {
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("CORS_ORIGINS", "http://localhost:5173")
 	v.SetDefault("TRUST_PROXY", false)
-	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "REDIS_URL"} {
+	v.SetDefault("RETENTION_DAYS", 90)
+	for _, key := range []string{"DATABASE_URL", "JWT_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "REDIS_URL", "RABBITMQ_URL", "VAPID_PUBLIC_KEY"} {
 		_ = v.BindEnv(key)
 	}
 	v.AutomaticEnv()
@@ -86,6 +96,9 @@ func (c Config) validate() error {
 	}
 	if len(c.JWTSecret) < 32 {
 		errs = append(errs, errors.New("JWT_SECRET must have at least 32 characters"))
+	}
+	if c.RetentionDays < 31 {
+		errs = append(errs, errors.New("RETENTION_DAYS must be at least 31, after the public link expires"))
 	}
 	if c.IsProduction() {
 		if c.JWTSecret == devJWTSecret {

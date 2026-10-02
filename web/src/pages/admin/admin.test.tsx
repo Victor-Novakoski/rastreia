@@ -15,6 +15,7 @@ const delivery = {
   created_at: '2026-10-01T10:00:00Z',
   updated_at: '2026-10-01T15:00:00Z',
   completed_at: null,
+  anonymized_at: null,
 }
 const drivers = [{ id: 2, name: 'João', email: 'joao@example.com', role: 'driver', created_at: '2026-10-01T09:00:00Z' }]
 

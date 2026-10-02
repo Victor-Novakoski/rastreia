@@ -37,7 +37,10 @@ type Event struct {
 }
 
 func eventFromStore(e store.DeliveryEvent) Event {
-	return Event(e)
+	return Event{
+		ID: e.ID, DeliveryID: e.DeliveryID, Status: e.Status,
+		Note: e.Note, CreatedBy: e.CreatedBy, CreatedAt: e.CreatedAt,
+	}
 }
 
 type EventInput struct {
@@ -65,6 +68,9 @@ func (s *Service) AddEvent(ctx context.Context, actor auth.Claims, deliveryID in
 	d, err := s.visible(ctx, actor, deliveryID)
 	if err != nil {
 		return Event{}, err
+	}
+	if d.AnonymizedAt != nil {
+		return Event{}, errAnonymized
 	}
 	if !slices.Contains(transitions[d.Status], in.Status) {
 		return Event{}, fmt.Errorf("%w: cannot go from %s to %s", apperr.ErrConflict, d.Status, in.Status)

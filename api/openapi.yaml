@@ -55,6 +55,13 @@ components:
           format: date-time
           nullable: true
           description: When the delivery last became delivered or failed
+        anonymized_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the recipient's name, e-mail and address were erased, RETENTION_DAYS after the
+            delivery was finished. Such a delivery answers 409 to PATCH and to new events.
     Status:
       type: string
       enum: [pending, picked_up, in_transit, delivered, failed]
@@ -341,6 +348,63 @@ paths:
         "200":
           description: Tracking
           content: { application/json: { schema: { $ref: "#/components/schemas/Tracking" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /public/push/key:
+    get:
+      summary: VAPID public key for Web Push (no login)
+      description: Only served when the API has VAPID_PUBLIC_KEY. The browser passes it to PushManager.subscribe().
+      responses:
+        "200":
+          description: Key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { public_key: { type: string, description: base64url } }
+  /public/tracking/{code}/push:
+    post:
+      summary: Get push notifications about this delivery on this browser (no login)
+      description: |
+        The body is the JSON of the browser PushSubscription. The endpoint must be https on a known
+        browser push service (Google, Mozilla, Microsoft, Apple), since the worker posts to it.
+        Up to 10 browsers per delivery; delivered deliveries answer 409. Subscriptions are deleted
+        when the delivery is delivered. Shares the tracking rate limit.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint: { type: string, example: "https://fcm.googleapis.com/fcm/send/abc" }
+                keys:
+                  type: object
+                  required: [p256dh, auth]
+                  properties: { p256dh: { type: string }, auth: { type: string } }
+      responses:
+        "204": { description: Subscribed }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Delivered, or too many browsers, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      summary: Stop push notifications about this delivery on this browser (no login)
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties: { endpoint: { type: string } }
+      responses:
+        "204": { description: Unsubscribed (also when it was not subscribed) }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /public/tracking/{code}/live:

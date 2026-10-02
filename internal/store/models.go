@@ -19,15 +19,17 @@ type Delivery struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
+	AnonymizedAt   *time.Time
 }
 
 type DeliveryEvent struct {
-	ID         int64
-	DeliveryID int64
-	Status     string
-	Note       *string
-	CreatedBy  *int64
-	CreatedAt  time.Time
+	ID          int64
+	DeliveryID  int64
+	Status      string
+	Note        *string
+	CreatedBy   *int64
+	CreatedAt   time.Time
+	PublishedAt *time.Time
 }
 
 type IdempotencyKey struct {
@@ -36,6 +38,15 @@ type IdempotencyKey struct {
 	RequestHash string
 	DeliveryID  *int64
 	CreatedAt   time.Time
+}
+
+type PushSubscription struct {
+	ID         int64
+	DeliveryID int64
+	Endpoint   string
+	P256dh     string
+	Auth       string
+	CreatedAt  time.Time
 }
 
 type RefreshToken struct {

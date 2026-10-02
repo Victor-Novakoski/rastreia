@@ -10,6 +10,7 @@ const base = {
   created_at: '2026-10-01T10:00:00Z',
   updated_at: '2026-10-01T12:00:00Z',
   completed_at: null,
+  anonymized_at: null,
 }
 const pickedUp = { ...base, id: 1, tracking_code: 'RS7K2M9QXA4P', recipient_name: 'Maria', address: 'Rua A, 10', status: 'picked_up' }
 const delivered = { ...base, id: 2, tracking_code: 'RSQ8W3ZK5MNB', recipient_name: 'Carlos', address: 'Rua B, 20', status: 'delivered' }
