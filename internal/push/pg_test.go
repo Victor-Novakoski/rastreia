@@ -24,7 +24,8 @@ func TestPG_SubscribeListAndForget(t *testing.T) {
 	deliveries := delivery.NewService(delivery.NewPGStore(pool))
 	owner := auth.Claims{UserID: u.ID, Role: auth.RoleCarrier, CarrierID: carrierID}
 	d, err := deliveries.Create(ctx, owner, delivery.CreateInput{
-		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
+		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", RecipientPhone: "11987654321",
+		PostalCode: "01001000", Street: "Praça da Sé", Number: "10", District: "Sé", City: "São Paulo", State: "SP",
 	})
 	require.NoError(t, err)
 	svc := push.NewService(deliveries, q)

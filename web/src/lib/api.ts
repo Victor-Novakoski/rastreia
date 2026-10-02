@@ -14,7 +14,7 @@ export class ApiError extends Error {
 }
 
 export type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
   body?: unknown
   token?: string
   headers?: Record<string, string>

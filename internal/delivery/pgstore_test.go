@@ -34,8 +34,15 @@ func setup(t *testing.T) (*delivery.Service, *pgxpool.Pool, auth.Claims, auth.Cl
 }
 
 func input(driverID int64) delivery.CreateInput {
+	in := address()
+	in.DriverID = &driverID
+	return in
+}
+
+func address() delivery.CreateInput {
 	return delivery.CreateInput{
-		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10", DriverID: &driverID,
+		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", RecipientPhone: "11987654321",
+		PostalCode: "01001000", Street: "Praça da Sé", Number: "10", District: "Sé", City: "São Paulo", State: "SP",
 	}
 }
 
@@ -132,9 +139,7 @@ func TestPG_FailedTransactionLeavesNoTrace(t *testing.T) {
 	// fails after the delivery row was written.
 	ghost := owner
 	ghost.UserID = 999_999
-	_, err := svc.Create(context.Background(), ghost, delivery.CreateInput{
-		RecipientName: "Maria", RecipientEmail: "maria@example.com", Address: "Rua A",
-	})
+	_, err := svc.Create(context.Background(), ghost, address())
 	require.Error(t, err)
 	assert.Equal(t, 0, count(t, pool, "deliveries"), "the delivery is rolled back with the event")
 }

@@ -208,13 +208,14 @@ O único cookie é o `rastreia_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/a
 ## 19. CORS — ✅
 
 - Lista exata de origens vinda de `CORS_ORIGINS` (padrão: `http://localhost:5173`, o Vite), sem `*`. Em produção só aceita `https`.
-- Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
+- Só os métodos (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`) e cabeçalhos (`Authorization`, `Content-Type`, `Idempotency-Key`) usados.
 - `credentials` liberado, porque o refresh token vai no cookie (item 18). Por isso a lista de origens nunca pode ter `*`.
 
 ## 20. XSS — ✅
 
 - React escapa todo texto vindo da API. O oxlint barra `dangerouslySetInnerHTML` (`react/no-danger`), links `javascript:` e `target="_blank"` sem `rel="noopener noreferrer"`.
-- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL`. No `npm run dev` ela fica de fora, porque o hot reload do Vite usa script inline.
+- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL` e com o ViaCEP e o Nominatim (endereço da entrega). Imagens externas só os mapas do OpenStreetMap.
+- Para o ViaCEP e o Nominatim só vão CEP, rua, número, cidade e UF, nunca o nome, o telefone ou o e-mail do destinatário. O Nominatim é chamado no máximo uma vez por segundo, como pede a política de uso dele. No `npm run dev` ela fica de fora, porque o hot reload do Vite usa script inline.
 - O access token fica em memória, não em `localStorage`; o refresh token está num cookie `HttpOnly`. Um XSS não leva a sessão embora.
 
 **Deploy (etapa 7):** `frame-ancestors` não funciona em `<meta>`, então a CDN do front precisa mandar `Content-Security-Policy: frame-ancestors 'none'` (ou `X-Frame-Options: DENY`) no cabeçalho.

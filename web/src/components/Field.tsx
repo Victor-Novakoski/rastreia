@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useId, type ComponentProps, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 const control =
   'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 focus:border-brand-600 focus:outline-2 focus:outline-brand-600 aria-invalid:border-danger-fg disabled:bg-slate-100'
@@ -27,7 +27,7 @@ function a11y(id: string, error?: string) {
   return { id, 'aria-invalid': error ? true : undefined, 'aria-describedby': error ? `${id}-error` : undefined }
 }
 
-export function TextField({ label, error, hint, ...rest }: Common & InputHTMLAttributes<HTMLInputElement>) {
+export function TextField({ label, error, hint, ...rest }: Common & ComponentProps<'input'>) {
   const id = useId()
   return (
     <Wrapper id={id} label={label} error={error} hint={hint}>

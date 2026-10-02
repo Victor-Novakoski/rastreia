@@ -68,6 +68,12 @@ O status só muda por **eventos** registrados pelo motorista (ou pela transporta
 - **RF16** Visão geral da transportadora: entregas por status nos últimos 30 dias e entregas sem motorista.
 - **RF17** O rastreio público mostra o nome da transportadora que está entregando.
 
+### Endereço e rota do motorista
+- **RF18** Endereço da entrega em partes (CEP, rua, número, complemento, bairro, cidade, UF), com telefone do destinatário e ponto de referência. O CEP preenche rua, bairro e cidade, e o endereço vira um ponto no mapa que a transportadora pode corrigir.
+- **RF19** A transportadora imprime uma etiqueta por entrega, com o código de rastreio em QR-code.
+- **RF20** O motorista monta a rota do dia bipando o QR-code de cada pacote (ou digitando o código). Pacote sem motorista passa a ser dele; de outro motorista é recusado.
+- **RF21** Pacotes no mesmo endereço viram uma parada. O sistema sugere uma ordem curta a partir de onde o motorista está e numera os pacotes de 1 a N; o motorista pode mudar a ordem como quiser.
+
 ## Requisitos não funcionais
 
 - **RNF01 Segurança:** seguir [SECURITY.md](SECURITY.md). Nenhuma etapa é concluída com item crítico pendente.
@@ -79,7 +85,8 @@ O status só muda por **eventos** registrados pelo motorista (ou pela transporta
 
 ## Fora de escopo (por enquanto)
 
-- Roteirização, mapa com GPS do motorista em tempo real, cálculo de frete.
+- Mapa com GPS do motorista em tempo real, cálculo de frete, rota pelas ruas (a ordem usa distância em linha reta).
+- Serviços pagos ou com chave de API (mapas, CEP, geocodificação).
 - App nativo (iOS/Android); o motorista usa web mobile.
 - Pagamentos, notas fiscais, integração com marketplaces.
 - Cadastro aberto de motorista: só a transportadora cria a conta do motorista.

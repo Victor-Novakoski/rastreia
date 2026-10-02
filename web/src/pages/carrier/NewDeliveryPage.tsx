@@ -33,7 +33,7 @@ export function NewDeliveryPage() {
   const errors = fieldErrors(create.error)
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-2xl">
       <Link to="/transportadora/entregas" className="text-sm font-medium text-brand-700 hover:underline">
         ← Entregas
       </Link>

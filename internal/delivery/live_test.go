@@ -79,7 +79,7 @@ func TestAnnounce_RenameReloadsPublicPage(t *testing.T) {
 	d := newAssigned(t, svc)
 	pub.take()
 
-	_, err := svc.Update(context.Background(), owner, d.ID, UpdateInput{Address: ptr("Rua Nova, 10")})
+	_, err := svc.Update(context.Background(), owner, d.ID, UpdateInput{Number: ptr("20")})
 	require.NoError(t, err)
 	assert.Len(t, pub.take(), 1, "an address change only reaches the panel")
 

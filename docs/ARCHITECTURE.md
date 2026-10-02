@@ -41,7 +41,8 @@ internal/
   store/              código GERADO pelo sqlc — não editar à mão
   auth/               JWT, bcrypt, login e middlewares de autenticação e papel
   user/               cadastro da transportadora, motoristas e /me
-  delivery/           regras de entregas
+  delivery/           regras de entregas e do endereço
+  route/              rota do dia do motorista: bipar pacotes, agrupar paradas e ordenar
   notify/             notificações: relay do outbox para o RabbitMQ, worker, e-mail e Web Push
   push/               inscrição do navegador no Web Push pela página de rastreio
   retention/          apaga os dados do destinatário depois do prazo de retenção (LGPD)

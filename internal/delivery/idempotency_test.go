@@ -47,7 +47,7 @@ func TestCreateIdempotent_Rejects(t *testing.T) {
 	require.NoError(t, err)
 
 	changed := validInput()
-	changed.Address = "Rua B, 20"
+	changed.Number = "20"
 	cases := map[string]struct {
 		key string
 		in  CreateInput

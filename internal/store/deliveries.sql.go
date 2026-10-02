@@ -62,18 +62,32 @@ func (q *Queries) CountUnassignedDeliveries(ctx context.Context, carrierID int64
 }
 
 const createDelivery = `-- name: CreateDelivery :one
-INSERT INTO deliveries (carrier_id, tracking_code, recipient_name, recipient_email, address, driver_id)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id
+INSERT INTO deliveries (
+    carrier_id, tracking_code, recipient_name, recipient_email, recipient_phone,
+    address, postal_code, street, number, complement, district, city, state,
+    address_reference, latitude, longitude, driver_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type CreateDeliveryParams struct {
-	CarrierID      int64
-	TrackingCode   string
-	RecipientName  string
-	RecipientEmail string
-	Address        string
-	DriverID       *int64
+	CarrierID        int64
+	TrackingCode     string
+	RecipientName    string
+	RecipientEmail   string
+	RecipientPhone   string
+	Address          string
+	PostalCode       string
+	Street           string
+	Number           string
+	Complement       string
+	District         string
+	City             string
+	State            string
+	AddressReference string
+	Latitude         *float64
+	Longitude        *float64
+	DriverID         *int64
 }
 
 func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error) {
@@ -82,7 +96,18 @@ func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) 
 		arg.TrackingCode,
 		arg.RecipientName,
 		arg.RecipientEmail,
+		arg.RecipientPhone,
 		arg.Address,
+		arg.PostalCode,
+		arg.Street,
+		arg.Number,
+		arg.Complement,
+		arg.District,
+		arg.City,
+		arg.State,
+		arg.AddressReference,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DriverID,
 	)
 	var i Delivery
@@ -99,12 +124,23 @@ func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) 
 		&i.CompletedAt,
 		&i.AnonymizedAt,
 		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const getDelivery = `-- name: GetDelivery :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id FROM deliveries WHERE id = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries WHERE id = $1
 `
 
 func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
@@ -123,12 +159,23 @@ func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
 		&i.CompletedAt,
 		&i.AnonymizedAt,
 		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const getDeliveryByTrackingCode = `-- name: GetDeliveryByTrackingCode :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id FROM deliveries WHERE tracking_code = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries WHERE tracking_code = $1
 `
 
 func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error) {
@@ -147,12 +194,23 @@ func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode st
 		&i.CompletedAt,
 		&i.AnonymizedAt,
 		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const listDeliveries = `-- name: ListDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE carrier_id = $1
   AND ($2::text IS NULL OR status = $2::text)
 ORDER BY created_at DESC, id DESC
@@ -193,6 +251,17 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 			&i.CompletedAt,
 			&i.AnonymizedAt,
 			&i.CarrierID,
+			&i.RecipientPhone,
+			&i.PostalCode,
+			&i.Street,
+			&i.Number,
+			&i.Complement,
+			&i.District,
+			&i.City,
+			&i.State,
+			&i.AddressReference,
+			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}
@@ -205,7 +274,7 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 }
 
 const listDriverDeliveries = `-- name: ListDriverDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE driver_id = $1::bigint
   AND ($2::text IS NULL OR status = $2::text)
 ORDER BY created_at DESC, id DESC
@@ -246,6 +315,17 @@ func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDelive
 			&i.CompletedAt,
 			&i.AnonymizedAt,
 			&i.CarrierID,
+			&i.RecipientPhone,
+			&i.PostalCode,
+			&i.Street,
+			&i.Number,
+			&i.Complement,
+			&i.District,
+			&i.City,
+			&i.State,
+			&i.AddressReference,
+			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}
@@ -263,7 +343,7 @@ UPDATE deliveries SET
     completed_at = $2,
     updated_at   = now()
 WHERE id = $3 AND status = $4
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type SetDeliveryStatusParams struct {
@@ -296,34 +376,81 @@ func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusPa
 		&i.CompletedAt,
 		&i.AnonymizedAt,
 		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const updateDelivery = `-- name: UpdateDelivery :one
 UPDATE deliveries SET
-    recipient_name  = coalesce($1, recipient_name),
-    recipient_email = coalesce($2, recipient_email),
-    address         = coalesce($3, address),
-    driver_id       = coalesce($4, driver_id),
-    updated_at      = now()
-WHERE id = $5
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id
+    recipient_name    = $1,
+    recipient_email   = $2,
+    recipient_phone   = $3,
+    address           = $4,
+    postal_code       = $5,
+    street            = $6,
+    number            = $7,
+    complement        = $8,
+    district          = $9,
+    city              = $10,
+    state             = $11,
+    address_reference = $12,
+    latitude          = $13,
+    longitude         = $14,
+    driver_id         = coalesce($15, driver_id),
+    updated_at        = now()
+WHERE id = $16
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type UpdateDeliveryParams struct {
-	RecipientName  *string
-	RecipientEmail *string
-	Address        *string
-	DriverID       *int64
-	ID             int64
+	RecipientName    string
+	RecipientEmail   string
+	RecipientPhone   string
+	Address          string
+	PostalCode       string
+	Street           string
+	Number           string
+	Complement       string
+	District         string
+	City             string
+	State            string
+	AddressReference string
+	Latitude         *float64
+	Longitude        *float64
+	DriverID         *int64
+	ID               int64
 }
 
+// UpdateDelivery writes every recipient and address field: the service
+// merges the change into the current delivery first. The driver is only
+// changed when sent.
 func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, updateDelivery,
 		arg.RecipientName,
 		arg.RecipientEmail,
+		arg.RecipientPhone,
 		arg.Address,
+		arg.PostalCode,
+		arg.Street,
+		arg.Number,
+		arg.Complement,
+		arg.District,
+		arg.City,
+		arg.State,
+		arg.AddressReference,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DriverID,
 		arg.ID,
 	)
@@ -341,6 +468,17 @@ func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) 
 		&i.CompletedAt,
 		&i.AnonymizedAt,
 		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }

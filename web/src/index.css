@@ -26,3 +26,28 @@
     @apply bg-slate-50 text-slate-900 antialiased;
   }
 }
+
+/* Marcadores do mapa (components/Map.tsx). */
+@layer components {
+  .map-pin span {
+    @apply block size-8 rounded-full rounded-br-none border-2 border-white bg-brand-600 shadow-md;
+    transform: rotate(45deg);
+  }
+  .map-stop span {
+    @apply flex size-7 items-center justify-center rounded-full border-2 border-white bg-brand-700 text-sm font-bold text-white shadow-md;
+  }
+  .map-stop-done span {
+    @apply bg-success-fg;
+  }
+}
+
+/* Etiqueta de 10 x 15 cm (pages/carrier/LabelPage.tsx). */
+@media print {
+  @page {
+    size: 100mm 150mm;
+    margin: 4mm;
+  }
+  body {
+    @apply bg-white;
+  }
+}

@@ -10,6 +10,18 @@ const delivery = {
   recipient_name: 'Maria Souza',
   recipient_email: 'maria@example.com',
   address: 'Rua A, 10',
+  // Entrega antiga: só o endereço numa linha.
+  recipient_phone: '',
+  postal_code: '',
+  street: '',
+  number: '',
+  complement: '',
+  district: '',
+  city: '',
+  state: '',
+  address_reference: '',
+  latitude: null,
+  longitude: null,
   status: 'in_transit',
   driver_id: 2,
   created_at: '2026-10-01T10:00:00Z',
@@ -158,22 +170,135 @@ describe('painel', () => {
     expect(await screen.findByText('Nenhuma entrega com esse filtro.')).toBeInTheDocument()
   })
 
-  it('nova entrega manda Idempotency-Key e mostra os erros de campo', async () => {
+  it('nova entrega preenche pelo CEP, acha o ponto no mapa e manda Idempotency-Key', async () => {
     const calls = mockApi({
       'POST /auth/refresh': () => [200, carrierSession],
       'GET /drivers': () => [200, drivers],
+      'GET /ws/01001000/json/': () => [
+        200,
+        { cep: '01001-000', logradouro: 'Praça da Sé', bairro: 'Sé', localidade: 'São Paulo', uf: 'SP' },
+      ],
+      'GET /search': () => [200, [{ lat: '-23.5503', lon: '-46.6339' }]],
       'POST /deliveries': () => [422, { error: 'invalid input', fields: { recipient_email: 'must be a valid e-mail' } }],
     })
     renderApp('/transportadora/entregas/nova')
-    await userEvent.type(await screen.findByLabelText('Nome do destinatário'), 'Maria')
-    await userEvent.type(screen.getByLabelText('E-mail do destinatário'), 'maria@x')
-    await userEvent.type(screen.getByLabelText('Endereço'), 'Rua A, 10')
-    await userEvent.click(screen.getByRole('button', { name: 'Criar entrega' }))
+    await userEvent.type(await screen.findByLabelText('Nome'), 'Maria')
+    await userEvent.type(screen.getByLabelText('Telefone'), '11987654321')
+    expect(screen.getByLabelText('Telefone')).toHaveValue('(11) 98765-4321')
+    await userEvent.type(screen.getByLabelText('E-mail'), 'maria@x')
+    await userEvent.type(screen.getByLabelText('CEP'), '01001000')
+    await waitFor(() => expect(screen.getByLabelText('Rua')).toHaveValue('Praça da Sé'))
+    expect(screen.getByLabelText('Bairro')).toHaveValue('Sé')
+    expect(screen.getByLabelText('Cidade')).toHaveValue('São Paulo')
+    expect(screen.getByLabelText('UF')).toHaveValue('SP')
+    await waitFor(() => expect(screen.getByLabelText('Número')).toHaveFocus())
+    await userEvent.type(screen.getByLabelText('Número'), '10')
+    await userEvent.type(screen.getByLabelText('Ponto de referência'), 'Portão azul')
+    await userEvent.click(screen.getByRole('button', { name: 'Achar no mapa' }))
+    expect(await screen.findByRole('button', { name: 'Tirar o pino' })).toBeInTheDocument()
+    const search = calls.find((c) => c.path.startsWith('/search'))!
+    expect(new URLSearchParams(search.path.split('?')[1]).get('street')).toBe('10 Praça da Sé')
 
+    await userEvent.click(screen.getByRole('button', { name: 'Criar entrega' }))
     expect(await screen.findByText('E-mail inválido.')).toBeInTheDocument()
     const post = calls.find((c) => c.method === 'POST' && c.path === '/deliveries')!
     expect(post.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
-    expect(post.body).toEqual({ recipient_name: 'Maria', recipient_email: 'maria@x', address: 'Rua A, 10' })
+    expect(post.body).toEqual({
+      recipient_name: 'Maria',
+      recipient_email: 'maria@x',
+      recipient_phone: '11987654321',
+      postal_code: '01001000',
+      street: 'Praça da Sé',
+      number: '10',
+      complement: '',
+      district: 'Sé',
+      city: 'São Paulo',
+      state: 'SP',
+      address_reference: 'Portão azul',
+      latitude: -23.5503,
+      longitude: -46.6339,
+    })
+  })
+
+  it('CEP inexistente pede o endereço à mão', async () => {
+    mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /drivers': () => [200, drivers],
+      'GET /ws/99999999/json/': () => [200, { erro: 'true' }],
+    })
+    renderApp('/transportadora/entregas/nova')
+    await userEvent.type(await screen.findByLabelText('CEP'), '99999999')
+    expect(await screen.findByText('CEP não encontrado. Preencha o endereço à mão.')).toBeInTheDocument()
+  })
+
+  it('entrega antiga troca de motorista sem preencher o endereço', async () => {
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /drivers': () => [200, [...drivers, { ...drivers[0], id: 3, name: 'Rita' }]],
+      'GET /deliveries/1': () => [200, delivery],
+      'GET /deliveries/1/events': () => [200, []],
+      'PATCH /deliveries/1': () => [200, { ...delivery, driver_id: 3 }],
+    })
+    renderApp('/transportadora/entregas/1')
+    expect(await screen.findByText(/Endereço atual: Rua A, 10/)).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Motorista'), 'Rita')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByText('Alterações salvas.')).toBeInTheDocument()
+    expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({ driver_id: 3 })
+  })
+
+  it('mudar o número manda o endereço inteiro', async () => {
+    const full = {
+      ...delivery,
+      recipient_phone: '11987654321',
+      postal_code: '01001000',
+      street: 'Praça da Sé',
+      number: '10',
+      district: 'Sé',
+      city: 'São Paulo',
+      state: 'SP',
+      latitude: -23.55,
+      longitude: -46.63,
+    }
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /drivers': () => [200, drivers],
+      'GET /deliveries/1': () => [200, full],
+      'GET /deliveries/1/events': () => [200, []],
+      'PATCH /deliveries/1': () => [200, full],
+    })
+    renderApp('/transportadora/entregas/1')
+    const number = await screen.findByLabelText('Número')
+    await userEvent.clear(number)
+    await userEvent.type(number, '20')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await screen.findByText('Alterações salvas.')
+    expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({
+      postal_code: '01001000',
+      street: 'Praça da Sé',
+      number: '20',
+      complement: '',
+      district: 'Sé',
+      city: 'São Paulo',
+      state: 'SP',
+      address_reference: '',
+      latitude: -23.55,
+      longitude: -46.63,
+    })
+  })
+
+  it('etiqueta mostra o QR-code e o código', async () => {
+    mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /me': () => [200, me],
+      'GET /deliveries/1': () => [200, { ...delivery, recipient_phone: '11987654321' }],
+    })
+    renderApp('/transportadora/entregas/1/etiqueta')
+    const qr = await screen.findByRole('img', { name: 'QR-code da entrega RS7K2M9QXA4P' })
+    expect(qr.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
+    expect(screen.getByText('(11) 98765-4321')).toBeInTheDocument()
+    expect(await screen.findByText('Expresso Sul')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Imprimir' })).toBeInTheDocument()
   })
 
   it('detalhe oferece só as transições válidas', async () => {

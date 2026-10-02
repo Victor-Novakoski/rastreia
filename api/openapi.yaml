@@ -89,7 +89,21 @@ components:
         tracking_code: { type: string, example: RS7K2M9QXA4P }
         recipient_name: { type: string }
         recipient_email: { type: string, format: email }
-        address: { type: string }
+        address:
+          type: string
+          description: The whole address in one line, built from the parts below
+          example: Praça da Sé, 10, Apto 2 - Sé, São Paulo - SP, 01001-000
+        recipient_phone: { type: string, example: "11987654321", description: Empty for deliveries created before the address had parts }
+        postal_code: { type: string, example: "01001000", description: CEP, 8 digits }
+        street: { type: string, maxLength: 200 }
+        number: { type: string, maxLength: 20, example: "S/N" }
+        complement: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100, description: Bairro }
+        city: { type: string, maxLength: 100 }
+        state: { type: string, example: SP, description: UF }
+        address_reference: { type: string, maxLength: 300, description: Ponto de referência or notes for the driver }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
         status: { $ref: "#/components/schemas/Status" }
         driver_id: { type: integer, format: int64, nullable: true }
         created_at: { type: string, format: date-time }
@@ -111,11 +125,22 @@ components:
       enum: [pending, picked_up, in_transit, delivered, failed]
     CreateDelivery:
       type: object
-      required: [recipient_name, recipient_email, address]
+      required: [recipient_name, recipient_email, recipient_phone, postal_code, street, number, district, city, state]
+      description: Latitude and longitude are optional and go together; the carrier's form places the address on a map.
       properties:
         recipient_name: { type: string }
         recipient_email: { type: string, format: email }
-        address: { type: string }
+        recipient_phone: { type: string, example: "11987654321", description: Digits only, with the area code (10 or 11) }
+        postal_code: { type: string, example: "01001000", description: CEP, 8 digits }
+        street: { type: string, maxLength: 200 }
+        number: { type: string, maxLength: 20, example: "S/N" }
+        complement: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100, description: Bairro }
+        city: { type: string, maxLength: 100 }
+        state: { type: string, example: SP, description: UF }
+        address_reference: { type: string, maxLength: 300, description: Ponto de referência or notes for the driver }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
         driver_id: { type: integer, format: int64, description: A driver of the same carrier }
     Event:
       type: object
@@ -159,12 +184,50 @@ components:
               created_at: { type: string, format: date-time }
     UpdateDelivery:
       type: object
-      description: Only the fields sent are changed. Status changes through delivery events.
+      description: |
+        Only the fields sent are changed. Sending any part of the address checks the whole address,
+        and drops the map position unless latitude and longitude are sent too. Status changes
+        through delivery events.
       properties:
         recipient_name: { type: string }
         recipient_email: { type: string, format: email }
-        address: { type: string }
+        recipient_phone: { type: string, example: "11987654321", description: Digits only, with the area code (10 or 11) }
+        postal_code: { type: string, example: "01001000", description: CEP, 8 digits }
+        street: { type: string, maxLength: 200 }
+        number: { type: string, maxLength: 20, example: "S/N" }
+        complement: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100, description: Bairro }
+        city: { type: string, maxLength: 100 }
+        state: { type: string, example: SP, description: UF }
+        address_reference: { type: string, maxLength: 300, description: Ponto de referência or notes for the driver }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
         driver_id: { type: integer, format: int64, description: A driver of the same carrier }
+    Route:
+      type: object
+      description: |
+        The driver's route for today (Brazil's day). Packages to the same address (CEP, street and
+        number) are one stop; packages are numbered 1..N in delivery order.
+      properties:
+        date: { type: string, format: date }
+        total_packages: { type: integer }
+        stops:
+          type: array
+          items:
+            type: object
+            properties:
+              number: { type: integer, example: 1 }
+              address: { type: string, description: Without the complement }
+              latitude: { type: number, format: double, nullable: true }
+              longitude: { type: number, format: double, nullable: true }
+              packages:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Delivery"
+                    - type: object
+                      properties:
+                        position: { type: integer, description: Position of the package in the route, from 1 }
   responses:
     BadRequest:
       description: Malformed request
@@ -417,6 +480,103 @@ paths:
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Delivery" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /me/route:
+    get:
+      summary: The driver's route for today, empty until a package is scanned
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /me/route/deliveries:
+    post:
+      summary: Load a package into today's route by its tracking code
+      description: |
+        code is the tracking code or the tracking link from the label's QR code. A delivery of the
+        carrier without a driver becomes the driver's. Scanning it again changes nothing.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: RS7K2M9QXA4P }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Delivered already, assigned to another driver, or the route has 300 packages }
+  /me/route/deliveries/{id}:
+    delete:
+      summary: Take a package out of today's route; it stays assigned to the driver
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/route/order:
+    put:
+      summary: Save the order the driver chose
+      description: Packages of the same stop stay together, in the place of the first of them.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delivery_ids]
+              properties:
+                delivery_ids:
+                  type: array
+                  description: Every package of the route, once, in the new order
+                  items: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /me/route/optimize:
+    post:
+      summary: Put the stops in a short order
+      description: |
+        Nearest neighbor and 2-opt over straight-line distances, starting near the driver's position
+        when sent. Stops without a map position go to the end.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                latitude: { type: number, format: double, nullable: true }
+                longitude: { type: number, format: double, nullable: true }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "422": { $ref: "#/components/responses/Invalid" }
   /public/tracking/{code}:
     get:

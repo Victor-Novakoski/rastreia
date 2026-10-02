@@ -62,6 +62,17 @@ function Details({ delivery }: { delivery: Delivery }) {
         <Link to={`/rastreio/${delivery.tracking_code}`} className="text-brand-700 underline underline-offset-2">
           ver rastreio público
         </Link>
+        {!delivery.anonymized_at && (
+          <>
+            {' · '}
+            <Link
+              to={`/transportadora/entregas/${delivery.id}/etiqueta`}
+              className="text-brand-700 underline underline-offset-2"
+            >
+              imprimir etiqueta
+            </Link>
+          </>
+        )}
       </p>
       {delivery.anonymized_at && (
         <div className="mt-4">
@@ -166,8 +177,9 @@ function EditDelivery({ delivery }: { delivery: Delivery }) {
   const queryClient = useQueryClient()
   const drivers = useDrivers()
   const [saved, setSaved] = useState(false)
+  const initial = inputOf(delivery)
   const save = useMutation({
-    mutationFn: (input: DeliveryInput) => updateDelivery(api, delivery.id, input),
+    mutationFn: (input: DeliveryInput) => updateDelivery(api, delivery.id, changes(initial, input)),
     onMutate: () => setSaved(false),
     onSuccess: (d) => {
       queryClient.setQueryData(['delivery', d.id], d)
@@ -183,12 +195,8 @@ function EditDelivery({ delivery }: { delivery: Delivery }) {
       {saved && <Alert tone="success">Alterações salvas.</Alert>}
       {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
       <DeliveryForm
-        initial={{
-          recipient_name: delivery.recipient_name,
-          recipient_email: delivery.recipient_email,
-          address: delivery.address,
-          driver_id: delivery.driver_id ?? undefined,
-        }}
+        initial={initial}
+        legacyAddress={delivery.postal_code ? undefined : delivery.address}
         drivers={drivers.data}
         errors={fieldErrors(save.error)}
         sending={save.isPending}
@@ -197,4 +205,54 @@ function EditDelivery({ delivery }: { delivery: Delivery }) {
       />
     </div>
   )
+}
+
+function inputOf(d: Delivery): DeliveryInput {
+  return {
+    recipient_name: d.recipient_name,
+    recipient_email: d.recipient_email,
+    recipient_phone: d.recipient_phone,
+    postal_code: d.postal_code,
+    street: d.street,
+    number: d.number,
+    complement: d.complement,
+    district: d.district,
+    city: d.city,
+    state: d.state,
+    address_reference: d.address_reference,
+    latitude: d.latitude,
+    longitude: d.longitude,
+    driver_id: d.driver_id ?? undefined,
+  }
+}
+
+const addressKeys = [
+  'postal_code',
+  'street',
+  'number',
+  'complement',
+  'district',
+  'city',
+  'state',
+  'address_reference',
+  'latitude',
+  'longitude',
+] as const
+
+/**
+ * Só o que mudou vai no PATCH: uma entrega antiga, sem o endereço em partes,
+ * pode trocar de motorista sem preencher o endereço. Mudou algo do endereço,
+ * vai o endereço inteiro com o pino, porque a API confere tudo junto e sem
+ * coordenadas tira o pino antigo.
+ */
+function changes(before: DeliveryInput, after: DeliveryInput): Partial<DeliveryInput> {
+  const out: Partial<DeliveryInput> = {}
+  const keys = Object.keys(after) as (keyof DeliveryInput)[]
+  for (const k of keys) {
+    if (after[k] !== before[k]) Object.assign(out, { [k]: after[k] })
+  }
+  if (addressKeys.some((k) => k in out)) {
+    for (const k of addressKeys) Object.assign(out, { [k]: after[k] })
+  }
+  return out
 }

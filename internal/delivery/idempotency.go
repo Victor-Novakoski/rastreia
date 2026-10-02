@@ -26,10 +26,11 @@ func (s *Service) CreateIdempotent(ctx context.Context, actor auth.Claims, key s
 	if err := v.Err(); err != nil {
 		return Delivery{}, false, err
 	}
-	if err := s.validateCreate(ctx, actor.CarrierID, &in); err != nil {
+	rec, err := s.validateCreate(ctx, actor.CarrierID, in)
+	if err != nil {
 		return Delivery{}, false, err
 	}
-	hash, err := requestHash(in)
+	hash, err := requestHash(rec, in.DriverID)
 	if err != nil {
 		return Delivery{}, false, err
 	}
@@ -49,7 +50,7 @@ func (s *Service) CreateIdempotent(ctx context.Context, actor auth.Claims, key s
 		if err != nil {
 			return err
 		}
-		if d, err = s.insert(ctx, q, actor, in); err != nil {
+		if d, err = s.insert(ctx, q, actor, rec, in.DriverID); err != nil {
 			return err
 		}
 		return q.SetIdempotencyKeyDelivery(ctx, store.SetIdempotencyKeyDeliveryParams{UserID: actorID, Key: key, DeliveryID: &d.ID})
@@ -83,8 +84,11 @@ func (s *Service) replay(ctx context.Context, q Store, k store.GetIdempotencyKey
 
 // requestHash fingerprints the normalized input, so the same request sent
 // with different spacing or casing still matches.
-func requestHash(in CreateInput) (string, error) {
-	b, err := json.Marshal(in)
+func requestHash(r recipient, driverID *int64) (string, error) {
+	b, err := json.Marshal(struct {
+		Recipient recipient
+		DriverID  *int64
+	}{r, driverID})
 	if err != nil {
 		return "", err
 	}
