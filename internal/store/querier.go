@@ -13,11 +13,15 @@ type Querier interface {
 	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
 	// several API instances run the relay without sending an event twice.
 	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
+	CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error)
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
 	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteExpiredIdempotencyKey(ctx context.Context, arg DeleteExpiredIdempotencyKeyParams) error
+	DeletePushSubscription(ctx context.Context, arg DeletePushSubscriptionParams) error
+	DeletePushSubscriptionByID(ctx context.Context, id int64) error
+	DeletePushSubscriptionsByCode(ctx context.Context, trackingCode string) error
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
@@ -27,6 +31,7 @@ type Querier interface {
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
+	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
 	ListUsersByRole(ctx context.Context, role string) ([]User, error)
 	MarkEventsPublished(ctx context.Context, ids []int64) error
 	// ReserveIdempotencyKey returns no row when the key already exists. A
@@ -42,6 +47,7 @@ type Querier interface {
 	// piled up while RabbitMQ was off.
 	SkipStaleEvents(ctx context.Context, before time.Time) (int64, error)
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
+	UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error
 	// Marks the token used only if nobody did it first, so two refreshes racing
 	// with the same token cannot both succeed.
 	UseRefreshToken(ctx context.Context, id int64) (int64, error)

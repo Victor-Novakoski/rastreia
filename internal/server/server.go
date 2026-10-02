@@ -14,6 +14,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
+	"github.com/Victor-Novakoski/rastreia/internal/push"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
 
@@ -23,7 +24,9 @@ type Deps struct {
 	Users      *user.Handler
 	Deliveries *delivery.Handler
 	// Live serves the WebSocket routes; nil leaves them out.
-	Live    *delivery.LiveHandler
+	Live *delivery.LiveHandler
+	// Push serves the Web Push routes; nil (no VAPID key) leaves them out.
+	Push    *push.Handler
 	Ready   func(r *http.Request) error
 	Options Options
 }
@@ -93,6 +96,11 @@ func New(d Deps) http.Handler {
 		r.With(limit("logout", opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
 		// Its own, tighter limit makes guessing tracking codes slow.
 		r.With(tracking).Get("/public/tracking/{code}", d.Deliveries.Track)
+		if d.Push != nil {
+			r.Get("/public/push/key", d.Push.Key)
+			r.With(tracking).Post("/public/tracking/{code}/push", d.Push.Subscribe)
+			r.With(tracking).Delete("/public/tracking/{code}/push", d.Push.Unsubscribe)
+		}
 
 		r.Group(func(r chi.Router) {
 			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))

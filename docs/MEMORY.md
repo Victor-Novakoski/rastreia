@@ -4,7 +4,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 6 (notificações) em andamento: e-mail pelo RabbitMQ pronto; falta Web Push e retenção de dados. Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6 (notificações) em andamento: e-mail e Web Push prontos; falta a retenção de dados (#27). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
@@ -18,6 +18,10 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-02 — Worker sem acesso ao banco; a mensagem leva nome e e-mail.** *Menos permissão no worker.* (worker buscando a entrega pelo id)
 - **2026-10-02 — E-mail com go-mail e Mailpit em desenvolvimento.** *go-mail cuida de MIME, UTF-8 no assunto e STARTTLS; o Mailpit mostra os e-mails sem mandar nada de verdade.* (`net/smtp`, MailHog, que parou de ser mantido)
 - **2026-10-02 — Celular por Web Push (PWA), não app nativo.** *Avisa como um app sem loja nem segundo código; no iPhone só funciona com o site adicionado à tela de início.* (React Native, SMS)
+- **2026-10-02 — Inscrição de push pertence à entrega, não a uma pessoa.** *O destinatário não tem conta; quem tem o código pode pedir aviso, como já pode ver o rastreio. Limite de 10 navegadores por entrega e apagadas quando a entrega é entregue.*
+- **2026-10-02 — Endpoint de push só em hosts dos serviços dos navegadores.** *O worker faz POST na URL que o navegador manda; sem a lista, seria SSRF ([SECURITY.md](SECURITY.md) #17).* (bloquear só IPs privados, que exige checar depois do DNS)
+- **2026-10-02 — Worker do push lê o banco.** *As inscrições mudam a qualquer hora; mandar todas dentro da mensagem do evento deixaria a fila com dados velhos.* O e-mail continua sem banco.
+- **2026-10-02 — Service worker registrado só ao ativar os avisos.** *Quem não usa push não ganha um service worker; o front não tem cache offline.* (vite-plugin-pwa, que traria cache e mais configuração)
 
 - **2026-10-02 — Tempo real por WebSocket (`coder/websocket`), servidor só envia.** *O rastreio público recebe o mesmo corpo do `GET`, então a página não refaz a consulta; o painel recebe só `{delivery_id, status}` e invalida o cache do TanStack Query, sem dado pessoal no fio.* (SSE, que serviria e é mais simples, mas o PRD pede WebSocket; polling)
 - **2026-10-02 — Token do painel na primeira mensagem do WebSocket, não na URL.** *O navegador não manda `Authorization` no WebSocket, e token na URL vai parar em log. A API fecha com o código 4001 quando o token vence, e o front renova e reconecta.* (cookie, que exigiria mais checagem de CSRF; subprotocolo)

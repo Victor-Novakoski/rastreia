@@ -4,6 +4,7 @@ import { PublicLayout } from '../components/PublicLayout'
 import { Spinner } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
 import { LiveBadge } from '../components/LiveBadge'
+import { PushToggle } from '../components/PushToggle'
 import { StatusIcon } from '../components/StatusIcon'
 import { ApiError } from '../lib/api'
 import { formatDateTime } from '../lib/format'
@@ -105,6 +106,7 @@ function TrackingDetails({ tracking, live }: { tracking: Tracking; live: boolean
         {live && <LiveBadge />}
       </div>
       <p className="mt-2 text-sm text-slate-600">Atualizado em {formatDateTime(tracking.updated_at)}</p>
+      {tracking.status !== 'delivered' && <PushToggle code={tracking.tracking_code} />}
 
       <h2 className="mt-8 text-lg font-semibold">Histórico</h2>
       <ol className="mt-3">

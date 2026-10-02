@@ -16,12 +16,24 @@ const (
 	RoutingKey = "delivery.status_changed"
 
 	EmailQueue = "notifications.email"
-	// A failed e-mail waits in EmailRetryQueue for RetryDelay and goes back
-	// to EmailQueue; after MaxAttempts it is parked in EmailDeadQueue.
-	EmailRetryQueue = "notifications.email.retry"
-	EmailDeadQueue  = "notifications.email.dead"
+	PushQueue  = "notifications.push"
 
 	RetryDelayMillis = 30_000
+)
+
+// queues lists the consumer queues. A failed message waits in <queue>.retry
+// for RetryDelayMillis and goes back; after Consumer.MaxAttempts it is parked
+// in <queue>.dead.
+var queues = []string{EmailQueue, PushQueue}
+
+func retryQueue(q string) string { return q + ".retry" }
+func deadQueue(q string) string  { return q + ".dead" }
+
+// Exported for tests and for whoever inspects the parked messages.
+var (
+	EmailRetryQueue = retryQueue(EmailQueue)
+	EmailDeadQueue  = deadQueue(EmailQueue)
+	PushDeadQueue   = deadQueue(PushQueue)
 )
 
 // Declare creates the exchange and queues if they do not exist. Both the API
@@ -31,27 +43,32 @@ func Declare(ch *amqp.Channel) error {
 	if err := ch.ExchangeDeclare(Exchange, amqp.ExchangeTopic, true, false, false, false, nil); err != nil {
 		return err
 	}
-	queues := []struct {
-		name string
-		args amqp.Table
-	}{
-		{EmailQueue, amqp.Table{
-			"x-dead-letter-exchange":    "",
-			"x-dead-letter-routing-key": EmailRetryQueue,
-		}},
-		{EmailRetryQueue, amqp.Table{
-			"x-message-ttl":             int32(RetryDelayMillis),
-			"x-dead-letter-exchange":    "",
-			"x-dead-letter-routing-key": EmailQueue,
-		}},
-		{EmailDeadQueue, nil},
-	}
-	for _, q := range queues {
-		if _, err := ch.QueueDeclare(q.name, true, false, false, false, q.args); err != nil {
-			return fmt.Errorf("queue %s: %w", q.name, err)
+	for _, name := range queues {
+		decl := []struct {
+			name string
+			args amqp.Table
+		}{
+			{name, amqp.Table{
+				"x-dead-letter-exchange":    "",
+				"x-dead-letter-routing-key": retryQueue(name),
+			}},
+			{retryQueue(name), amqp.Table{
+				"x-message-ttl":             int32(RetryDelayMillis),
+				"x-dead-letter-exchange":    "",
+				"x-dead-letter-routing-key": name,
+			}},
+			{deadQueue(name), nil},
+		}
+		for _, q := range decl {
+			if _, err := ch.QueueDeclare(q.name, true, false, false, false, q.args); err != nil {
+				return fmt.Errorf("queue %s: %w", q.name, err)
+			}
+		}
+		if err := ch.QueueBind(name, RoutingKey, Exchange, false, nil); err != nil {
+			return err
 		}
 	}
-	return ch.QueueBind(EmailQueue, RoutingKey, Exchange, false, nil)
+	return nil
 }
 
 // Publisher sends messages with publisher confirms: Publish returns only once
