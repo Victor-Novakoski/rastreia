@@ -474,7 +474,8 @@ func TestIntegration_Route(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, a.do(http.MethodPost, "/me/route/deliveries", a.driverA, `{"code":"`+d.TrackingCode+`"}`, &r))
 	require.Len(t, r.Stops, 1)
-	assert.Equal(t, 1, r.Stops[0].Packages[0].Number)
+	assert.Equal(t, 1, r.Stops[0].Packages[0].Position)
+	assert.Equal(t, "10", r.Stops[0].Packages[0].Number, "the position does not hide the street number")
 	assert.Equal(t, http.StatusConflict, a.do(http.MethodPost, "/me/route/deliveries", a.driverB, `{"code":"`+d.TrackingCode+`"}`, nil),
 		"the first driver to scan takes the package")
 

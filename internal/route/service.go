@@ -57,9 +57,10 @@ type Stop struct {
 	items     []int64   // delivery ids, in order
 }
 
-// Package is a delivery in the route, numbered 1..N in delivery order.
+// Package is a delivery in the route. Position numbers the packages 1..N in
+// delivery order; it is not called number, which is the street number.
 type Package struct {
-	Number int `json:"number"`
+	Position int `json:"position"`
 	delivery.Delivery
 }
 
@@ -296,7 +297,7 @@ func (s *Service) load(ctx context.Context, q Store, r store.Route) (Route, erro
 	for i := range out.Stops {
 		for j := range out.Stops[i].Packages {
 			out.TotalPackages++
-			out.Stops[i].Packages[j].Number = out.TotalPackages
+			out.Stops[i].Packages[j].Position = out.TotalPackages
 		}
 	}
 	return out, nil

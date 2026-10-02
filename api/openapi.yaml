@@ -227,7 +227,7 @@ components:
                     - $ref: "#/components/schemas/Delivery"
                     - type: object
                       properties:
-                        number: { type: integer, description: Position of the package in the route, from 1 }
+                        position: { type: integer, description: Position of the package in the route, from 1 }
   responses:
     BadRequest:
       description: Malformed request

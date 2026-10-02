@@ -86,7 +86,7 @@ func numbers(r route.Route) [][]int {
 	for _, st := range r.Stops {
 		var stop []int
 		for _, p := range st.Packages {
-			stop = append(stop, p.Number)
+			stop = append(stop, p.Position)
 		}
 		out = append(out, stop)
 	}
