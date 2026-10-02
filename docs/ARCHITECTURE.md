@@ -31,6 +31,7 @@ As peças entram uma por vez, na ordem de [TASKS.md](TASKS.md). Nenhuma peça no
 
 ```
 cmd/api/              ponto de entrada: config, banco, rotas e shutdown gracioso
+cmd/worker/           worker de notificações: lê a fila do RabbitMQ e manda os e-mails
 api/                  especificação OpenAPI (embutida e servida em /openapi.yaml)
 internal/
   config/             lê variáveis de ambiente (Viper), com .env como fallback
@@ -41,6 +42,7 @@ internal/
   auth/               JWT, bcrypt, login e middlewares de autenticação e papel
   user/               cadastro e listagem de usuários (admin e motorista)
   delivery/           regras de entregas
+  notify/             notificações: relay do outbox para o RabbitMQ, worker e e-mail
   apperr/             erros de domínio (validação, não encontrado, conflito)
   httpx/              helpers HTTP: JSON, decode seguro, mapeamento de erros
   server/             montagem das rotas e middlewares globais
@@ -83,22 +85,43 @@ handler  ──►  service  ──►  Store (interface)  ──►  store (sql
 - Papéis: `admin` e `driver`. O cliente final não tem conta; ele usa o código de rastreio.
 - Melhorias planejadas (tokens curtos, refresh, revogação) estão em [SECURITY.md](SECURITY.md).
 
+## Notificações
+
+```
+API: troca de status ─┬─► delivery_events (mesma transação, published_at NULL)
+                      │
+relay (goroutine da API, a cada 1s)
+  └─► lê eventos não publicados (FOR UPDATE SKIP LOCKED)
+      └─► exchange rastreia.events (topic, delivery.status_changed)
+          └─► fila notifications.email ──► worker ──► SMTP
+                 │ falhou: rejeita
+                 ▼
+              notifications.email.retry (espera 30s e volta)
+              notifications.email.dead (depois de 5 tentativas ou mensagem inválida)
+```
+
+- `delivery_events` funciona como outbox: o evento e a marca "falta publicar" são gravados juntos, então nenhuma troca de status fica sem notificação, mesmo com o RabbitMQ fora do ar. Sem `RABBITMQ_URL` o relay não roda e os eventos ficam no banco.
+- O relay publica com confirmação do RabbitMQ e só então marca `published_at`. Eventos com mais de 1 hora são descartados sem envio. Entrega é **pelo menos uma vez**: uma queda entre publicar e gravar repete o e-mail.
+- Cada canal tem sua fila ligada à mesma exchange; um canal novo (push) não mexe no e-mail.
+- A mensagem leva nome e e-mail do destinatário porque o worker não acessa o banco.
+
 ## Banco de dados
 
 - Migrations em `internal/database/migrations`, embutidas com `go:embed` e aplicadas automaticamente quando a API sobe.
 - Uma migration nunca é editada depois de ir para a `main`: cria-se outra.
-- Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
+- Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status e outbox das notificações) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
 - A mudança de status usa concorrência otimista: o `UPDATE` só altera a linha se o status ainda for o que o service leu (`WHERE status = from_status`); se outro evento chegou antes, responde 409.
 - `deliveries.completed_at` guarda quando a entrega foi entregue ou falhou pela última vez; o rastreio público expira 30 dias depois.
 - O status da entrega é validado também por `CHECK` no banco, não só na aplicação.
 
 ## Configuração
 
-Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`. Variáveis de ambiente têm prioridade sobre o `.env`.
+Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`, `REDIS_URL`, `RABBITMQ_URL`. O worker usa `RABBITMQ_URL`, `TRACKING_URL` e `SMTP_*`. Variáveis de ambiente têm prioridade sobre o `.env`.
 
 ## Ambiente de desenvolvimento
 
 - `docker compose up` usa `docker-compose.yml` + `docker-compose.override.yml`: a API roda com air dentro do container e recompila a cada arquivo salvo.
+- O compose sobe também Redis, RabbitMQ (painel em `http://localhost:15672`, guest/guest), o worker e o Mailpit, que captura os e-mails em `http://localhost:8025`.
 - A imagem de produção é o estágio final do `Dockerfile` (distroless, usuário não-root, binário estático).
 - Também dá para rodar só o banco no Docker e o `air` direto na máquina.
 

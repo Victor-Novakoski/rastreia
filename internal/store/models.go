@@ -22,12 +22,13 @@ type Delivery struct {
 }
 
 type DeliveryEvent struct {
-	ID         int64
-	DeliveryID int64
-	Status     string
-	Note       *string
-	CreatedBy  *int64
-	CreatedAt  time.Time
+	ID          int64
+	DeliveryID  int64
+	Status      string
+	Note        *string
+	CreatedBy   *int64
+	CreatedAt   time.Time
+	PublishedAt *time.Time
 }
 
 type IdempotencyKey struct {

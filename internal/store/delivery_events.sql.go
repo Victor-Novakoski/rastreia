@@ -12,7 +12,7 @@ import (
 const createDeliveryEvent = `-- name: CreateDeliveryEvent :one
 INSERT INTO delivery_events (delivery_id, status, note, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, delivery_id, status, note, created_by, created_at
+RETURNING id, delivery_id, status, note, created_by, created_at, published_at
 `
 
 type CreateDeliveryEventParams struct {
@@ -37,12 +37,13 @@ func (q *Queries) CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEve
 		&i.Note,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.PublishedAt,
 	)
 	return i, err
 }
 
 const listDeliveryEvents = `-- name: ListDeliveryEvents :many
-SELECT id, delivery_id, status, note, created_by, created_at FROM delivery_events
+SELECT id, delivery_id, status, note, created_by, created_at, published_at FROM delivery_events
 WHERE delivery_id = $1
 ORDER BY created_at, id
 `
@@ -63,6 +64,7 @@ func (q *Queries) ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]D
 			&i.Note,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.PublishedAt,
 		); err != nil {
 			return nil, err
 		}
