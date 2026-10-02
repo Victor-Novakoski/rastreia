@@ -20,10 +20,13 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
 
+const testOrigin = "http://localhost:5173"
+
 // testAPI is the real router on a real database, with one token per user.
 type testAPI struct {
 	t       *testing.T
 	h       http.Handler
+	q       *store.Queries
 	admin   string
 	driverA string
 	driverB string
@@ -35,7 +38,7 @@ func newAPI(t *testing.T, opts Options) *testAPI {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
 	h := New(Deps{
 		Tokens:     tokens,
-		Auth:       auth.NewHandler(q, tokens, auth.NewLoginGuard()),
+		Auth:       auth.NewHandler(q, tokens, auth.NewLoginGuard(), auth.NewSessions(q, time.Hour), auth.CookieOptions{AllowedOrigins: []string{testOrigin}}),
 		Users:      user.NewHandler(user.NewService(q)),
 		Deliveries: delivery.NewHandler(delivery.NewService(delivery.NewPGStore(pool))),
 		Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
@@ -52,7 +55,7 @@ func newAPI(t *testing.T, opts Options) *testAPI {
 		return tok
 	}
 	return &testAPI{
-		t: t, h: h,
+		t: t, h: h, q: q,
 		admin:   token("Admin", auth.RoleAdmin),
 		driverA: token("Ana", auth.RoleDriver),
 		driverB: token("Bruno", auth.RoleDriver),
@@ -167,4 +170,58 @@ func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	var list []delivery.Delivery
 	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", a.admin, "", &list))
 	assert.Len(t, list, 1)
+}
+
+func TestIntegration_RefreshTokenRotation(t *testing.T) {
+	a := newAPI(t, Options{})
+	hash, err := auth.HashPassword("senha-da-carla")
+	require.NoError(t, err)
+	_, err = a.q.CreateUser(context.Background(), store.CreateUserParams{
+		Name: "Carla", Email: "carla@example.com", PasswordHash: hash, Role: auth.RoleDriver,
+	})
+	require.NoError(t, err)
+
+	send := func(path string, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.RemoteAddr = "203.0.113.7:1234"
+		req.Header.Set("Origin", testOrigin)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		a.h.ServeHTTP(rec, req)
+		return rec
+	}
+	cookieOf := func(rec *httptest.ResponseRecorder) *http.Cookie {
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == auth.RefreshCookie {
+				return c
+			}
+		}
+		t.Fatalf("no refresh cookie: %d %s", rec.Code, rec.Body.String())
+		return nil
+	}
+
+	rec := send("/auth/login", nil, `{"email":"carla@example.com","password":"senha-da-carla"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	first := cookieOf(rec)
+
+	rec = send("/auth/refresh", first, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp struct {
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, http.StatusOK, a.do(http.MethodGet, "/me/deliveries", resp.Token, "", nil),
+		"the new access token works")
+	second := cookieOf(rec)
+
+	// Replaying the first token revokes the session, including the second token.
+	assert.Equal(t, http.StatusUnauthorized, send("/auth/refresh", first, "").Code)
+	assert.Equal(t, http.StatusUnauthorized, send("/auth/refresh", second, "").Code)
+
+	// A new login starts a fresh session, and logout ends it.
+	third := cookieOf(send("/auth/login", nil, `{"email":"carla@example.com","password":"senha-da-carla"}`))
+	assert.Equal(t, http.StatusNoContent, send("/auth/logout", third, "").Code)
+	assert.Equal(t, http.StatusUnauthorized, send("/auth/refresh", third, "").Code)
 }

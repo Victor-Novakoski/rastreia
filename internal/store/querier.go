@@ -11,11 +11,13 @@ import (
 type Querier interface {
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
 	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteExpiredIdempotencyKey(ctx context.Context, arg DeleteExpiredIdempotencyKeyParams) error
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
+	GetRefreshToken(ctx context.Context, tokenHash []byte) (GetRefreshTokenRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
@@ -26,11 +28,15 @@ type Querier interface {
 	// concurrent request with the same key waits here until the first one
 	// commits or rolls back.
 	ReserveIdempotencyKey(ctx context.Context, arg ReserveIdempotencyKeyParams) (IdempotencyKey, error)
+	RevokeRefreshFamily(ctx context.Context, familyID string) error
 	// SetDeliveryStatus only changes the row if the status is still the one the
 	// caller saw, so two concurrent events cannot both apply.
 	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
+	// Marks the token used only if nobody did it first, so two refreshes racing
+	// with the same token cannot both succeed.
+	UseRefreshToken(ctx context.Context, id int64) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

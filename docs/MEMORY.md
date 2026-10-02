@@ -4,7 +4,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 3 (front-end) em andamento: base do front e rastreio público prontos. Ver [TASKS.md](TASKS.md).
+- **Etapa:** 3 (front-end) em andamento: base do front, rastreio público e refresh token na API prontos. Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
@@ -12,6 +12,9 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-02 — Refresh token opaco no banco (hash SHA-256), com rotação e família.** *Dá para revogar (logout, reuso) e o banco vazado não entrega tokens usáveis; reuso derruba a família inteira.* (refresh em JWT, sem estado: não dá para revogar)
+- **2026-10-02 — Sem período de tolerância para refresh simultâneo.** *Mais simples e mais seguro; o front garante uma renovação por vez. Duas abas renovando ao mesmo tempo podem derrubar a sessão: se virar problema, entra uma tolerância de poucos segundos.*
+- **2026-10-02 — Cookie `rastreia_refresh` com `Path=/auth` e `SameSite=Strict`, mais checagem de `Origin`.** *O cookie só vai para as rotas de sessão, e o `Origin` fecha o CSRF. Exige front e API no mesmo site.* (prefixo `__Host-`, que obriga `Path=/`)
 - **2026-10-02 — Front em `web/`, no mesmo repositório.** *Um PR muda API e tela juntos, e a CI confere os dois.* (repositório separado)
 - **2026-10-02 — Vite + React + TypeScript + Tailwind, com oxlint e Vitest.** *Stack padrão do mercado e rápida; oxlint veio no template do Vite e substitui o ESLint.* (Next.js: sem SSR necessário, o front é estático numa CDN)
 - **2026-10-02 — React Router, sem biblioteca de estado ou de requisições por enquanto.** *Uma página pública só pede um `fetch`; TanStack Query entra se o painel precisar de cache.* (RULES: nada "para o futuro")
@@ -25,7 +28,7 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-01 — Go com chi, sem framework.** *Biblioteca padrão + roteador leve deixa o código explícito e fácil de testar.* (Gin, Echo, Fiber)
 - **2026-10-01 — sqlc + pgx em vez de ORM.** *SQL escrito à mão e revisável, código tipado gerado, parâmetros sempre — elimina SQL injection por construção.* (GORM, ent)
 - **2026-10-01 — Migrations embutidas e aplicadas ao subir a API.** *Um binário só, sem passo manual; o banco sempre fica na versão do código.*
-- **2026-10-01 — JWT HS256 com papel no token.** *Simples para a etapa 1. Será trocado por access token curto + refresh rotativo na etapa 3* ([SECURITY.md](SECURITY.md) #14).
+- **2026-10-01 — JWT HS256 com papel no token.** *Simples para a etapa 1. Na etapa 3 passou a durar 15 min, com refresh rotativo* ([SECURITY.md](SECURITY.md) #14).
 - **2026-10-01 — Status muda só por evento, nunca por PATCH.** *Garante histórico completo para o rastreio público e auditoria.*
 - **2026-10-01 — Código de rastreio aleatório (`RS` + 10 caracteres sem 0/O/1/I).** *Legível por telefone e impossível de adivinhar a partir de outro código; o id sequencial nunca é público.*
 - **2026-10-01 — Uma única transportadora por instalação.** *Multi-tenant fica fora de escopo para manter o foco* ([PRD](PRD.md)).

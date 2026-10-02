@@ -61,8 +61,10 @@ func run() error {
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: server.New(server.Deps{
-			Tokens:     tokens,
-			Auth:       auth.NewHandler(queries, tokens, auth.NewLoginGuard()),
+			Tokens: tokens,
+			Auth: auth.NewHandler(queries, tokens, auth.NewLoginGuard(),
+				auth.NewSessions(queries, cfg.RefreshTTL),
+				auth.CookieOptions{AllowedOrigins: cfg.AllowedOrigins()}),
 			Users:      user.NewHandler(users),
 			Deliveries: delivery.NewHandler(delivery.NewService(delivery.NewPGStore(pool))),
 			Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },

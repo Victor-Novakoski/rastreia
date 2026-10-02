@@ -31,7 +31,7 @@ func TestLogin(t *testing.T) {
 	require.NoError(t, err)
 	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
 	tokens := NewTokens(testSecret, time.Hour)
-	h := NewHandler(users, tokens, NewLoginGuard())
+	h := NewHandler(users, tokens, NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
 
 	cases := []struct {
 		name string
@@ -54,9 +54,14 @@ func TestLogin(t *testing.T) {
 				var resp loginResponse
 				require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 				assert.Equal(t, RoleDriver, resp.Role)
+				assert.Equal(t, 3600, resp.ExpiresIn)
 				claims, err := tokens.Parse(resp.Token)
 				require.NoError(t, err)
 				assert.Equal(t, int64(7), claims.UserID)
+				cookie := refreshCookie(t, rec)
+				assert.True(t, cookie.HttpOnly)
+				assert.Equal(t, "/auth", cookie.Path)
+				assert.Equal(t, http.SameSiteStrictMode, cookie.SameSite)
 			}
 		})
 	}
@@ -66,7 +71,7 @@ func TestLogin_LocksAfterRepeatedFailures(t *testing.T) {
 	hash, err := HashPassword("correct-horse")
 	require.NoError(t, err)
 	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
-	h := NewHandler(users, NewTokens(testSecret, time.Hour), NewLoginGuard())
+	h := NewHandler(users, NewTokens(testSecret, time.Hour), NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
 
 	login := func(password string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -81,4 +86,65 @@ func TestLogin_LocksAfterRepeatedFailures(t *testing.T) {
 	rec := login("correct-horse")
 	assert.Equal(t, http.StatusTooManyRequests, rec.Code, "even the right password waits for the lock")
 	assert.NotEmpty(t, rec.Header().Get("Retry-After"))
+}
+
+const testOrigin = "http://localhost:5173"
+
+func refreshCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == RefreshCookie {
+			return c
+		}
+	}
+	t.Fatal("no refresh cookie")
+	return nil
+}
+
+func TestRefreshAndLogout(t *testing.T) {
+	hash, err := HashPassword("correct-horse")
+	require.NoError(t, err)
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	tokens := NewTokens(testSecret, time.Hour)
+	h := NewHandler(users, tokens, NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour),
+		CookieOptions{AllowedOrigins: []string{testOrigin}})
+
+	rec := httptest.NewRecorder()
+	h.Login(rec, httptest.NewRequest(http.MethodPost, "/auth/login",
+		strings.NewReader(`{"email":"ana@example.com","password":"correct-horse"}`)))
+	require.Equal(t, http.StatusOK, rec.Code)
+	first := refreshCookie(t, rec)
+	assert.True(t, first.Secure)
+
+	post := func(handler http.HandlerFunc, origin string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/auth/x", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		return rec
+	}
+
+	assert.Equal(t, http.StatusForbidden, post(h.Refresh, "", first).Code, "no Origin")
+	assert.Equal(t, http.StatusForbidden, post(h.Refresh, "https://evil.example", first).Code, "foreign Origin")
+	assert.Equal(t, http.StatusUnauthorized, post(h.Refresh, testOrigin, nil).Code, "no cookie")
+
+	rec = post(h.Refresh, testOrigin, first)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp loginResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	claims, err := tokens.Parse(resp.Token)
+	require.NoError(t, err)
+	assert.Equal(t, Claims{UserID: 7, Role: RoleDriver}, claims)
+	second := refreshCookie(t, rec)
+	assert.NotEqual(t, first.Value, second.Value)
+
+	assert.Equal(t, http.StatusNoContent, post(h.Logout, testOrigin, second).Code)
+	rec = post(h.Refresh, testOrigin, second)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "session ended")
+	assert.Equal(t, -1, refreshCookie(t, rec).MaxAge, "invalid session clears the cookie")
 }
