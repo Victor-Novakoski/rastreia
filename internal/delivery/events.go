@@ -69,6 +69,9 @@ func (s *Service) AddEvent(ctx context.Context, actor auth.Claims, deliveryID in
 	if err != nil {
 		return Event{}, err
 	}
+	if d.AnonymizedAt != nil {
+		return Event{}, errAnonymized
+	}
 	if !slices.Contains(transitions[d.Status], in.Status) {
 		return Event{}, fmt.Errorf("%w: cannot go from %s to %s", apperr.ErrConflict, d.Status, in.Status)
 	}

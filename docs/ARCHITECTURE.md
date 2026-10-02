@@ -44,6 +44,7 @@ internal/
   delivery/           regras de entregas
   notify/             notificações: relay do outbox para o RabbitMQ, worker, e-mail e Web Push
   push/               inscrição do navegador no Web Push pela página de rastreio
+  retention/          apaga os dados do destinatário depois do prazo de retenção (LGPD)
   apperr/             erros de domínio (validação, não encontrado, conflito)
   httpx/              helpers HTTP: JSON, decode seguro, mapeamento de erros
   server/             montagem das rotas e middlewares globais
@@ -114,12 +115,13 @@ relay (goroutine da API, a cada 1s)
 - Uma migration nunca é editada depois de ir para a `main`: cria-se outra.
 - Tabelas atuais: `users`, `deliveries`, `delivery_events` (histórico de status e outbox das notificações), `push_subscriptions` (navegadores que pediram aviso) e `idempotency_keys` (chaves do `POST /deliveries`, válidas por 24h).
 - A mudança de status usa concorrência otimista: o `UPDATE` só altera a linha se o status ainda for o que o service leu (`WHERE status = from_status`); se outro evento chegou antes, responde 409.
+- `deliveries.anonymized_at` marca quando os dados do destinatário foram apagados pela retenção.
 - `deliveries.completed_at` guarda quando a entrega foi entregue ou falhou pela última vez; o rastreio público expira 30 dias depois.
 - O status da entrega é validado também por `CHECK` no banco, não só na aplicação.
 
 ## Configuração
 
-Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`, `REDIS_URL`, `RABBITMQ_URL`, `VAPID_PUBLIC_KEY`. O worker usa `RABBITMQ_URL`, `TRACKING_URL`, `SMTP_*` e, para o push, `DATABASE_URL` e `VAPID_*`. Variáveis de ambiente têm prioridade sobre o `.env`.
+Variáveis de ambiente (ver `.env.example`): `DATABASE_URL`, `JWT_SECRET`, `JWT_TTL`, `PORT`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DB_PORT`, `REDIS_URL`, `RABBITMQ_URL`, `VAPID_PUBLIC_KEY`, `RETENTION_DAYS`. O worker usa `RABBITMQ_URL`, `TRACKING_URL`, `SMTP_*` e, para o push, `DATABASE_URL` e `VAPID_*`. Variáveis de ambiente têm prioridade sobre o `.env`.
 
 ## Ambiente de desenvolvimento
 

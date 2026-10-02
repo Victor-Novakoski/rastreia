@@ -63,6 +63,14 @@ function Details({ delivery }: { delivery: Delivery }) {
           ver rastreio público
         </Link>
       </p>
+      {delivery.anonymized_at && (
+        <div className="mt-4">
+          <Alert tone="success">
+            Os dados do destinatário foram apagados em {formatDateTime(delivery.anonymized_at)}, como manda a política
+            de retenção. O histórico fica, mas a entrega não pode mais ser alterada.
+          </Alert>
+        </div>
+      )}
       {created && (
         <div className="mt-4">
           <Alert tone="success">Entrega criada.</Alert>
@@ -71,17 +79,25 @@ function Details({ delivery }: { delivery: Delivery }) {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">Mudar status</h2>
-          <div className="mt-3">
-            <StatusChange delivery={delivery} />
-          </div>
-          <h2 className="mt-6 text-lg font-semibold">Histórico</h2>
+          {!delivery.anonymized_at && (
+            <>
+              <h2 className="text-lg font-semibold">Mudar status</h2>
+              <div className="mt-3">
+                <StatusChange delivery={delivery} />
+              </div>
+            </>
+          )}
+          <h2 className={delivery.anonymized_at ? 'text-lg font-semibold' : 'mt-6 text-lg font-semibold'}>Histórico</h2>
           <History id={delivery.id} />
         </section>
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="text-lg font-semibold">Dados da entrega</h2>
           <div className="mt-3">
-            <EditDelivery delivery={delivery} />
+            {delivery.anonymized_at ? (
+              <p className="text-slate-600">Dados apagados.</p>
+            ) : (
+              <EditDelivery delivery={delivery} />
+            )}
           </div>
         </section>
       </div>

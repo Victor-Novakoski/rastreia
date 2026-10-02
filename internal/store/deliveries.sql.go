@@ -13,7 +13,7 @@ import (
 const createDelivery = `-- name: CreateDelivery :one
 INSERT INTO deliveries (tracking_code, recipient_name, recipient_email, address, driver_id)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
 `
 
 type CreateDeliveryParams struct {
@@ -44,12 +44,13 @@ func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }
 
 const getDelivery = `-- name: GetDelivery :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries WHERE id = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries WHERE id = $1
 `
 
 func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
@@ -66,12 +67,13 @@ func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }
 
 const getDeliveryByTrackingCode = `-- name: GetDeliveryByTrackingCode :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries WHERE tracking_code = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries WHERE tracking_code = $1
 `
 
 func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error) {
@@ -88,12 +90,13 @@ func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode st
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }
 
 const listDeliveries = `-- name: ListDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries
 WHERE $1::text IS NULL OR status = $1::text
 ORDER BY created_at DESC, id DESC
 LIMIT $3 OFFSET $2
@@ -125,6 +128,7 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompletedAt,
+			&i.AnonymizedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -137,7 +141,7 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 }
 
 const listDriverDeliveries = `-- name: ListDriverDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries
 WHERE driver_id = $1::bigint
   AND ($2::text IS NULL OR status = $2::text)
 ORDER BY created_at DESC, id DESC
@@ -176,6 +180,7 @@ func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDelive
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompletedAt,
+			&i.AnonymizedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -193,7 +198,7 @@ UPDATE deliveries SET
     completed_at = $2,
     updated_at   = now()
 WHERE id = $3 AND status = $4
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
 `
 
 type SetDeliveryStatusParams struct {
@@ -224,6 +229,7 @@ func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }
@@ -236,7 +242,7 @@ UPDATE deliveries SET
     driver_id       = coalesce($4, driver_id),
     updated_at      = now()
 WHERE id = $5
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
 `
 
 type UpdateDeliveryParams struct {
@@ -267,6 +273,7 @@ func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.AnonymizedAt,
 	)
 	return i, err
 }

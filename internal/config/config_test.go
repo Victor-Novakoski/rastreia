@@ -12,8 +12,15 @@ func validConfig() Config {
 		JWTSecret:   "a-real-secret-with-more-than-32-characters",
 		AppEnv:      "production",
 		AdminEmail:  "admin@example.com", AdminPassword: "a-strong-password",
-		CORSOrigins: "https://rastreia.dev, https://www.rastreia.dev",
+		CORSOrigins:   "https://rastreia.dev, https://www.rastreia.dev",
+		RetentionDays: 90,
 	}
+}
+
+func TestValidate_RetentionAfterPublicLink(t *testing.T) {
+	c := validConfig()
+	c.RetentionDays = 30
+	assert.ErrorContains(t, c.validate(), "RETENTION_DAYS")
 }
 
 func TestValidate(t *testing.T) {

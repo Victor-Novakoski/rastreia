@@ -36,7 +36,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 24 | Enumeração de e-mails | ✅ | — | Descobrir quais e-mails têm conta pela mensagem ou pelo tempo de resposta do login. |
 | 25 | Banco de dados exposto | 🟡 | Etapa 7 | Banco acessível pela rede ou pela internet, sem precisar passar pela API. |
 | 26 | Logs e auditoria | 🟡 | Média | Registrar quem fez o quê e os eventos suspeitos, para investigar e criar alertas. |
-| 27 | LGPD e retenção de dados | 🟡 | Etapa 6 | Lei de proteção de dados: coletar só o necessário, mostrar o mínimo e apagar quando não precisar mais. |
+| 27 | LGPD e retenção de dados | ✅ | — | Lei de proteção de dados: coletar só o necessário, mostrar o mínimo e apagar quando não precisar mais. |
 
 Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
@@ -257,7 +257,7 @@ Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, en
 - Auditoria de negócio da edição de entregas (`PATCH`). Mudanças de status já ficam em `delivery_events`, com quem fez e quando.
 - Alertas em produção para pico de falhas de login e de 5xx.
 
-## 27. LGPD e retenção de dados — 🟡
+## 27. LGPD e retenção de dados — ✅
 
 O sistema guarda nome, e-mail e endereço de destinatários.
 
@@ -267,6 +267,8 @@ O sistema guarda nome, e-mail e endereço de destinatários.
 - E-mail e push de notificação levam só o primeiro nome, o código e o status, sem endereço nem observação do motorista. O nome passa pelo `html/template`, que escapa HTML.
 - As inscrições de push são apagadas quando a entrega é entregue ou quando o serviço de push diz que expiraram.
 
+- Retenção: `RETENTION_DAYS` (padrão 90, mínimo 31) dias depois de entregue ou da última falha, a API apaga nome, e-mail e endereço do destinatário e as observações dos eventos (texto livre que pode citar pessoas). A entrega e o histórico de status ficam para os relatórios, e a entrega anonimizada não aceita mais alteração (409), para os dados não voltarem. Roda a cada hora em `internal/retention`, testado com Postgres real.
+- Coleta só o necessário: sem CPF, telefone etc. enquanto não houver uso.
+
 **Falta**
-- Definir por quanto tempo dados pessoais de entregas concluídas ficam guardados no banco e anonimizar depois (etapa 6).
-- Coletar só o necessário (sem CPF, telefone etc. enquanto não houver uso).
+- Backups seguem a mesma regra quando existirem (etapa 7).

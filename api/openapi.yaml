@@ -55,6 +55,13 @@ components:
           format: date-time
           nullable: true
           description: When the delivery last became delivered or failed
+        anonymized_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the recipient's name, e-mail and address were erased, RETENTION_DAYS after the
+            delivery was finished. Such a delivery answers 409 to PATCH and to new events.
     Status:
       type: string
       enum: [pending, picked_up, in_transit, delivered, failed]
