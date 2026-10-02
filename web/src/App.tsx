@@ -5,10 +5,12 @@ import { RequireRole } from './components/RequireRole'
 import { DeliveriesPage } from './pages/carrier/DeliveriesPage'
 import { DeliveryPage } from './pages/carrier/DeliveryPage'
 import { DriversPage } from './pages/carrier/DriversPage'
+import { LabelPage } from './pages/carrier/LabelPage'
 import { NewDeliveryPage } from './pages/carrier/NewDeliveryPage'
 import { OverviewPage } from './pages/carrier/OverviewPage'
 import { DriverDeliveriesPage } from './pages/driver/DriverDeliveriesPage'
 import { DriverDeliveryPage } from './pages/driver/DriverDeliveryPage'
+import { RoutePage } from './pages/driver/RoutePage'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -41,6 +43,15 @@ export function App() {
         <Route path="entregas/:id" element={<DeliveryPage />} />
         <Route path="motoristas" element={<DriversPage />} />
       </Route>
+      {/* Fora da moldura do painel: a página é só a etiqueta, pronta para imprimir. */}
+      <Route
+        path="/transportadora/entregas/:id/etiqueta"
+        element={
+          <RequireRole role="carrier">
+            <LabelPage />
+          </RequireRole>
+        }
+      />
       <Route
         path="/motorista"
         element={
@@ -50,6 +61,7 @@ export function App() {
         }
       >
         <Route index element={<DriverDeliveriesPage />} />
+        <Route path="rota" element={<RoutePage />} />
         <Route path="entregas/:id" element={<DriverDeliveryPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

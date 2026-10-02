@@ -4,12 +4,12 @@
 
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
-> Projeto em construção. Etapas prontas: base da API, segurança, eventos de status com rastreio público, front-end, CI, tempo real, notificações e várias transportadoras (cada uma com seus dados, cadastro aberto e página inicial).
+> Projeto em construção. Etapas prontas: base da API, segurança, eventos de status com rastreio público, front-end, CI, tempo real, notificações várias transportadoras (cada uma com seus dados, cadastro aberto e página inicial) e rota do motorista (endereço pelo CEP, etiqueta com QR-code, bipar os pacotes e ordem sugerida das paradas).
 
 ## Stack
 
 - **API:** Go, chi, pgx + sqlc, golang-migrate, Viper, JWT
-- **Front:** React, TypeScript, Vite, Tailwind CSS, React Router
+- **Front:** React, TypeScript, Vite, Tailwind CSS, React Router; mapas com Leaflet e OpenStreetMap, CEP pelo ViaCEP
 - **Banco:** PostgreSQL; Redis para tempo real, rate limit e bloqueio de login entre instâncias
 - **Mensageria:** RabbitMQ com outbox transacional, retry e fila de falhas; worker separado para e-mail e Web Push (PWA)
 - **Testes:** testing + testify; integração com Postgres, Redis e RabbitMQ reais via testcontainers; Vitest + Testing Library no front
@@ -17,7 +17,7 @@ Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o mot
 
 Atualização em tempo real por WebSocket na página de rastreio e no painel.
 
-Próximas etapas: fila de notificações com RabbitMQ e deploy na AWS.
+Próxima etapa: deploy na AWS.
 
 ## Documentação
 

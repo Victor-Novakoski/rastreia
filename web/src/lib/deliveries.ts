@@ -3,11 +3,31 @@ import type { Status } from './status'
 
 type Api = AuthContextValue['api']
 
-export type Delivery = {
+/** Endereço em partes. Entregas antigas só têm `address` e as partes vazias. */
+export type AddressParts = {
+  /** Só os dígitos, com DDD. */
+  recipient_phone: string
+  /** CEP, só os dígitos. */
+  postal_code: string
+  street: string
+  number: string
+  complement: string
+  district: string
+  city: string
+  /** UF. */
+  state: string
+  /** Ponto de referência ou recado para o motorista. */
+  address_reference: string
+  latitude: number | null
+  longitude: number | null
+}
+
+export type Delivery = AddressParts & {
   id: number
   tracking_code: string
   recipient_name: string
   recipient_email: string
+  /** Endereço numa linha, montado pela API a partir das partes. */
   address: string
   status: Status
   driver_id: number | null
@@ -32,10 +52,9 @@ export type PanelChange = { delivery_id: number; status: Status }
 
 export type Driver = { id: number; name: string; email: string; role: 'driver'; created_at: string }
 
-export type DeliveryInput = {
+export type DeliveryInput = AddressParts & {
   recipient_name: string
   recipient_email: string
-  address: string
   driver_id?: number
 }
 

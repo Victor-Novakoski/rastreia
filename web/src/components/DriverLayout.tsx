@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, Outlet } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
 import { useAuth } from '../lib/auth'
 import { useMe } from '../lib/me'
 
@@ -21,10 +21,30 @@ export function DriverLayout() {
             Sair
           </button>
         </div>
+        <nav aria-label="Áreas do motorista" className="mx-auto flex max-w-xl px-2">
+          <Tab to="/motorista/rota">Rota de hoje</Tab>
+          <Tab to="/motorista" end>
+            Entregas
+          </Tab>
+        </nav>
       </header>
       <main className="mx-auto w-full max-w-xl flex-1 px-4 py-4">
         <Outlet />
       </main>
     </div>
+  )
+}
+
+function Tab({ to, end, children }: { to: string; end?: boolean; children: string }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `flex min-h-11 flex-1 items-center justify-center border-b-4 font-semibold ${isActive ? 'border-white' : 'border-transparent text-brand-50/80'}`
+      }
+    >
+      {children}
+    </NavLink>
   )
 }

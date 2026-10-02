@@ -11,6 +11,7 @@ import { useAuth } from '../../lib/auth'
 import { addEvent, listEvents, listMyDeliveries, type Delivery } from '../../lib/deliveries'
 import { actionLabel, retryLabel, useMyDeliveries } from '../../lib/driver'
 import { fieldErrors } from '../../lib/fields'
+import { formatPhone } from '../../lib/address'
 import { formatDateTime } from '../../lib/format'
 import { nextStatuses, statusInfo, type Status } from '../../lib/status'
 
@@ -39,13 +40,23 @@ export function DriverDeliveryPage() {
 }
 
 function Details({ delivery: d }: { delivery: Delivery }) {
-  const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.address)}`
+  const place = d.latitude != null && d.longitude != null ? `${d.latitude},${d.longitude}` : d.address
+  const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <StatusBadge status={d.status} size="lg" />
         <h1 className="mt-3 text-2xl font-bold">{d.recipient_name}</h1>
         <p className="mt-1 text-lg">{d.address}</p>
+        {d.address_reference && <p className="mt-1 text-slate-700">Referência: {d.address_reference}</p>}
+        {d.recipient_phone && (
+          <a
+            href={`tel:+55${d.recipient_phone}`}
+            className="mt-3 mr-3 inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 font-semibold text-brand-700"
+          >
+            Ligar {formatPhone(d.recipient_phone)}
+          </a>
+        )}
         <a
           href={maps}
           target="_blank"

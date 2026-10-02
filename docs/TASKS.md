@@ -100,9 +100,9 @@ Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem se
 - [x] Retenção apaga também telefone, endereço em partes e coordenadas (#27)
 - [x] Rota do dia do motorista: bipar por código ou link do QR-code, pacote sem motorista passa a ser dele (#6)
 - [x] Paradas por endereço, numeração 1..N, ordem sugerida (vizinho mais próximo + 2-opt) e ordem livre
-- [ ] Formulário de entrega com CEP (ViaCEP) e pino no mapa (OpenStreetMap)
-- [ ] Etiqueta com QR-code para imprimir
-- [ ] Tela da rota no app do motorista: leitor de QR-code, mapa com as paradas, arrastar para reordenar
+- [x] Formulário de entrega com CEP (ViaCEP) e pino no mapa (OpenStreetMap)
+- [x] Etiqueta com QR-code para imprimir
+- [x] Tela da rota no app do motorista: leitor de QR-code, mapa com as paradas, arrastar para reordenar
 
 ## Etapa 7 — Deploy na AWS
 

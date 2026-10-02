@@ -18,6 +18,10 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-02 — Rota é do motorista e do dia (fuso de São Paulo), montada ao bipar.** *É o fluxo de quem carrega o carro na base; amanhã começa vazia.* (rota montada pela transportadora, que exige tela de despacho)
 - **2026-10-02 — Bipar pacote sem motorista atribui ao motorista que bipou.** *Na base o motorista pega os pacotes da pilha; esperar a transportadora atribuir travaria a saída. De outro motorista dá 409, de outra transportadora 404.*
 - **2026-10-02 — Parada = mesmo CEP, rua e número, sem olhar o complemento.** *Apartamentos de um prédio são uma parada só; entregas antigas agrupam pelo texto do endereço.*
+- **2026-10-02 — Leaflet + OpenStreetMap, ViaCEP e Nominatim, chamados do navegador.** *Gratuitos e sem chave; a CSP libera só esses hosts. O Leaflet e o jsQR são carregados só nas telas que usam.* (Google Maps e Mapbox, que pedem cartão; react-leaflet, uma camada a mais para dois mapas simples)
+- **2026-10-02 — QR-code da etiqueta com o link público de rastreio.** *O motorista bipa para carregar a rota e o cliente que ler cai no rastreio; a API tira o código do fim do link.*
+- **2026-10-02 — Leitor de QR com `BarcodeDetector` e jsQR de reserva.** *O Chrome do Android lê nativo e rápido; no iPhone o jsQR lê os quadros do vídeo.* (html5-qrcode, parado; zxing com WebAssembly baixado de CDN, que a CSP barra)
+- **2026-10-02 — Arrastar por eventos de ponteiro, com setas de reserva.** *O drag and drop do HTML não funciona no toque; uma biblioteca de arrastar seria mais peso para uma lista.*
 - **2026-10-02 — Ordem sugerida por vizinho mais próximo + 2-opt em linha reta, no Go.** *Para 30 a 50 paradas fica perto do ótimo em microssegundos, sem serviço de rotas pago nem OSRM para hospedar.* (OSRM, Google/Mapbox: custo ou mais um serviço)
 - **2026-10-02 — A ordem é guardada por pacote; as paradas são calculadas na leitura.** *Pacotes da mesma parada ficam juntos no lugar do primeiro, então reordenar paradas é só mandar os ids na nova ordem.*
 
