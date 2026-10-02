@@ -37,12 +37,12 @@ type CookieOptions struct {
 type Handler struct {
 	users    UserFinder
 	tokens   *Tokens
-	guard    *LoginGuard
+	guard    Guard
 	sessions *Sessions
 	cookie   CookieOptions
 }
 
-func NewHandler(users UserFinder, tokens *Tokens, guard *LoginGuard, sessions *Sessions, cookie CookieOptions) *Handler {
+func NewHandler(users UserFinder, tokens *Tokens, guard Guard, sessions *Sessions, cookie CookieOptions) *Handler {
 	return &Handler{users: users, tokens: tokens, guard: guard, sessions: sessions, cookie: cookie}
 }
 
@@ -69,7 +69,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(req.Email))
-	if wait := h.guard.Check(email); wait > 0 {
+	wait, err := h.guard.Check(r.Context(), email)
+	if err != nil {
+		// Without the count there is no brute-force protection, so the
+		// login waits for it instead of going ahead.
+		slog.Error("login guard", "err", err)
+		httpx.Error(w, http.StatusServiceUnavailable, "login unavailable, try again later")
+		return
+	}
+	if wait > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		httpx.Error(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
 		return
@@ -87,12 +95,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	// Same answer for unknown e-mail and wrong password, so the endpoint does
 	// not reveal which e-mails exist.
 	if !CheckPassword(hash, req.Password) || err != nil {
-		h.guard.Fail(email)
+		if err := h.guard.Fail(r.Context(), email); err != nil {
+			slog.Error("login guard", "err", err)
+		}
 		slog.Warn("login failed", "email_hash", emailFingerprint(email), "ip", r.RemoteAddr)
 		httpx.Error(w, http.StatusUnauthorized, "invalid e-mail or password")
 		return
 	}
-	h.guard.Success(email)
+	if err := h.guard.Success(r.Context(), email); err != nil {
+		slog.Error("login guard", "err", err)
+	}
 	refresh, err := h.sessions.Start(r.Context(), user.ID)
 	if err != nil {
 		httpx.WriteError(w, err)

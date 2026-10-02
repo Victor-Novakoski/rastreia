@@ -1,17 +1,33 @@
 package auth
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
 )
 
-// LoginGuard slows down password guessing on a single account. After
-// maxFails wrong passwords for the same e-mail, that e-mail is locked for a
-// period that doubles with each further failure, up to maxLock. It counts
-// e-mails that do not exist too, so a lock does not reveal which accounts
-// exist. State lives in memory: enough for one API instance; with several,
-// it moves to Redis.
+// Guard slows down password guessing on a single account. After maxFails
+// wrong passwords for the same e-mail, that e-mail is locked for a period
+// that doubles with each further failure, up to maxLock. It counts e-mails
+// that do not exist too, so a lock does not reveal which accounts exist.
+type Guard interface {
+	// Check reports how long the e-mail is still locked; zero means it may try.
+	Check(ctx context.Context, email string) (time.Duration, error)
+	// Fail records a wrong password.
+	Fail(ctx context.Context, email string) error
+	// Success clears the failures of an e-mail after a correct login.
+	Success(ctx context.Context, email string) error
+}
+
+const (
+	maxFails = 5
+	baseLock = time.Minute
+	maxLock  = 15 * time.Minute
+)
+
+// LoginGuard is a Guard in memory: enough for one API instance. With
+// several, RedisGuard shares the count between them.
 type LoginGuard struct {
 	mu       sync.Mutex
 	entries  map[string]*attempts
@@ -33,26 +49,24 @@ const sweepAt = 10_000
 func NewLoginGuard() *LoginGuard {
 	return &LoginGuard{
 		entries:  map[string]*attempts{},
-		maxFails: 5,
-		baseLock: time.Minute,
-		maxLock:  15 * time.Minute,
+		maxFails: maxFails,
+		baseLock: baseLock,
+		maxLock:  maxLock,
 		now:      time.Now,
 	}
 }
 
-// Check reports how long the e-mail is still locked; zero means it may try.
-func (g *LoginGuard) Check(email string) time.Duration {
+func (g *LoginGuard) Check(_ context.Context, email string) (time.Duration, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	a, ok := g.entries[key(email)]
 	if !ok {
-		return 0
+		return 0, nil
 	}
-	return max(a.lockedUntil.Sub(g.now()), 0)
+	return max(a.lockedUntil.Sub(g.now()), 0), nil
 }
 
-// Fail records a wrong password.
-func (g *LoginGuard) Fail(email string) {
+func (g *LoginGuard) Fail(_ context.Context, email string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
@@ -77,13 +91,14 @@ func (g *LoginGuard) Fail(email string) {
 		}
 		a.lockedUntil = now.Add(lock)
 	}
+	return nil
 }
 
-// Success clears the failures of an e-mail after a correct login.
-func (g *LoginGuard) Success(email string) {
+func (g *LoginGuard) Success(_ context.Context, email string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.entries, key(email))
+	return nil
 }
 
 func (g *LoginGuard) sweep(now time.Time) {
