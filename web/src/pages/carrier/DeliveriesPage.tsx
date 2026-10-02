@@ -40,7 +40,7 @@ export function DeliveriesPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-2xl font-bold">Entregas</h1>
         <Link
-          to="/admin/entregas/nova"
+          to="/transportadora/entregas/nova"
           className="inline-flex min-h-11 items-center rounded-lg bg-brand-700 px-4 font-semibold text-white hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           Nova entrega
@@ -90,7 +90,7 @@ export function DeliveriesPage() {
                   <tr key={d.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-3 py-2">
                       <Link
-                        to={`/admin/entregas/${d.id}`}
+                        to={`/transportadora/entregas/${d.id}`}
                         className="font-mono font-semibold text-brand-700 underline-offset-2 hover:underline"
                       >
                         {d.tracking_code}

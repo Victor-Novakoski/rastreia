@@ -51,7 +51,8 @@ Três superfícies, uma identidade visual:
 
 | Superfície | Dispositivo principal | Prioridade |
 | --- | --- | --- |
-| Painel admin | Desktop | Densidade de informação: tabela com filtros, busca e status visível |
+| Página inicial | Desktop e celular | Entender o produto em 5 segundos e achar a própria porta: transportadora, motorista ou rastreio |
+| Painel da transportadora | Desktop | Densidade de informação: visão geral, tabela com filtros, busca e status visível |
 | App do motorista | Celular, uma mão, na rua | Botões grandes, poucos toques, funciona com sinal ruim |
 | Rastreio público | Celular, link vindo de e-mail | Carregar rápido; status e linha do tempo entendidos em 3 segundos |
 
@@ -62,7 +63,7 @@ Três superfícies, uma identidade visual:
 - **Feedback de erro no campo:** os `fields` do 422 aparecem embaixo do campo correspondente.
 - **Status sempre com cor + texto + ícone**, nunca só cor (acessibilidade).
 - **Textos em português do Brasil**, datas em `dd/mm/aaaa HH:mm` no fuso do usuário.
-- Contraste mínimo WCAG AA; navegação por teclado no painel admin.
+- Contraste mínimo WCAG AA; navegação por teclado no painel da transportadora.
 
 ### Status na interface
 
@@ -95,11 +96,14 @@ Fonte do sistema (`system-ui`): nada para baixar, o que ajuda o rastreio públic
 - `StatusBadge`: status com ícone, texto e cor; tamanho `lg` no topo do rastreio.
 - `Button`: altura mínima de 44 px; com `loading`, fica desabilitado e mostra o indicador.
 - `Spinner`: indicador de carregamento com texto para leitor de tela.
+- `Logo`: marca (pino com caixa) em SVG, sempre ao lado do nome.
+- `SiteHeader`: cabeçalho das páginas abertas, com Rastrear e, na página inicial, Sou motorista e Entrar.
 - `PublicLayout`: cabeçalho e coluna estreita das páginas públicas.
-- `AdminLayout`: barra de navegação do painel (Entregas, Motoristas, Sair) e conteúdo até 1152 px.
+- `AuthCard`: cartão central das telas de entrar e cadastrar, com links para as outras áreas embaixo.
+- `CarrierLayout`: barra de navegação do painel (Visão geral, Entregas, Motoristas, Sair), com o nome da transportadora, e conteúdo até 1152 px.
 - `TextField`, `TextArea`, `SelectField`: rótulo, controle com 44 px de altura e erro embaixo, ligado por `aria-describedby`.
 - `Alert`: erro (`role="alert"`) ou sucesso (`role="status"`) no topo do formulário.
 - `Loading`, `LoadError`, `Empty`: os estados de carregando, erro (com "Tentar de novo") e vazio.
-- `DriverLayout`: cabeçalho fixo e uma coluna para o celular. No app do motorista, os botões de status têm 56 px de altura e dizem a ação ("Saí para entrega", "Entreguei"); "Não consegui entregar" é contornado em vermelho e abre o campo do motivo.
+- `DriverLayout`: cabeçalho fixo com o nome da transportadora e uma coluna para o celular. No app do motorista, os botões de status têm 56 px de altura e dizem a ação ("Saí para entrega", "Entreguei"); "Não consegui entregar" é contornado em vermelho e abre o campo do motivo.
 
 Ícones são SVG próprios em `StatusIcon`, sem biblioteca.

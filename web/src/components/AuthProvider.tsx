@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ApiError, request, type RequestOptions } from '../lib/api'
 import { AuthContext, type AuthState } from '../lib/auth'
-import { loginRequest, logoutRequest, refreshSession, type Session } from '../lib/session'
+import { loginRequest, logoutRequest, refreshSession, signUpRequest, type Session, type SignUpInput } from '../lib/session'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading' })
@@ -27,6 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const session = await loginRequest(email, password)
+      apply(session)
+      return session.role
+    },
+    [apply],
+  )
+
+  const signUp = useCallback(
+    async (input: SignUpInput) => {
+      const session = await signUpRequest(input)
       apply(session)
       return session.role
     },
@@ -71,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       login,
+      signUp,
       logout,
       api,
       accessToken,
@@ -79,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAttempt((n) => n + 1)
       },
     }),
-    [state, login, logout, api, accessToken],
+    [state, login, signUp, logout, api, accessToken],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

@@ -1,34 +1,41 @@
 import { Navigate, Route, Routes } from 'react-router'
-import { AdminLayout } from './components/AdminLayout'
+import { CarrierLayout } from './components/CarrierLayout'
 import { DriverLayout } from './components/DriverLayout'
 import { RequireRole } from './components/RequireRole'
-import { DeliveriesPage } from './pages/admin/DeliveriesPage'
-import { DeliveryPage } from './pages/admin/DeliveryPage'
-import { DriversPage } from './pages/admin/DriversPage'
+import { DeliveriesPage } from './pages/carrier/DeliveriesPage'
+import { DeliveryPage } from './pages/carrier/DeliveryPage'
+import { DriversPage } from './pages/carrier/DriversPage'
+import { NewDeliveryPage } from './pages/carrier/NewDeliveryPage'
+import { OverviewPage } from './pages/carrier/OverviewPage'
 import { DriverDeliveriesPage } from './pages/driver/DriverDeliveriesPage'
 import { DriverDeliveryPage } from './pages/driver/DriverDeliveryPage'
-import { NewDeliveryPage } from './pages/admin/NewDeliveryPage'
+import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { SignUpPage } from './pages/SignUpPage'
 import { TrackingPage } from './pages/TrackingPage'
 import { TrackingSearchPage } from './pages/TrackingSearchPage'
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/rastreio" replace />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/rastreio" element={<TrackingSearchPage />} />
       <Route path="/rastreio/:code" element={<TrackingPage />} />
-      <Route path="/entrar" element={<LoginPage />} />
+      {/* Endereço antigo do login: a página inicial leva a cada área. */}
+      <Route path="/entrar" element={<Navigate to="/" replace />} />
+      <Route path="/transportadora/entrar" element={<LoginPage audience="carrier" />} />
+      <Route path="/transportadora/cadastro" element={<SignUpPage />} />
+      <Route path="/motorista/entrar" element={<LoginPage audience="driver" />} />
       <Route
-        path="/admin"
+        path="/transportadora"
         element={
-          <RequireRole role="admin">
-            <AdminLayout />
+          <RequireRole role="carrier">
+            <CarrierLayout />
           </RequireRole>
         }
       >
-        <Route index element={<Navigate to="entregas" replace />} />
+        <Route index element={<OverviewPage />} />
         <Route path="entregas" element={<DeliveriesPage />} />
         <Route path="entregas/nova" element={<NewDeliveryPage />} />
         <Route path="entregas/:id" element={<DeliveryPage />} />

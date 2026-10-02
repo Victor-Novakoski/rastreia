@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { RequestOptions } from './api'
-import type { Role, Session } from './session'
+import type { Role, Session, SignUpInput } from './session'
 
 export type AuthState =
   | { status: 'loading' }
@@ -11,6 +11,7 @@ export type AuthState =
 export type AuthContextValue = {
   state: AuthState
   login: (email: string, password: string) => Promise<Role>
+  signUp: (input: SignUpInput) => Promise<Role>
   logout: () => Promise<void>
   retry: () => void
   /** Requisição autenticada. Um 401 renova o token uma vez e repete a chamada. */
@@ -29,5 +30,10 @@ export function useAuth(): AuthContextValue {
 
 /** Tela inicial de cada papel depois do login. */
 export function homeFor(role: Role): string {
-  return role === 'admin' ? '/admin/entregas' : '/motorista'
+  return role === 'carrier' ? '/transportadora' : '/motorista'
+}
+
+/** Tela de login de cada papel. */
+export function loginFor(role: Role): string {
+  return role === 'carrier' ? '/transportadora/entrar' : '/motorista/entrar'
 }

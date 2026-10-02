@@ -4,9 +4,9 @@ import { refreshSession } from './session'
 
 describe('refreshSession', () => {
   it('chamadas simultâneas usam uma requisição só', async () => {
-    const calls = mockApi({ 'POST /auth/refresh': () => [200, { token: 't', role: 'admin', expires_in: 900 }] })
+    const calls = mockApi({ 'POST /auth/refresh': () => [200, { token: 't', role: 'carrier', expires_in: 900 }] })
     const [a, b] = await Promise.all([refreshSession(), refreshSession()])
-    expect(a).toEqual({ token: 't', role: 'admin' })
+    expect(a).toEqual({ token: 't', role: 'carrier' })
     expect(b).toBe(a)
     expect(calls).toHaveLength(1)
     expect(calls[0].credentials).toBe('include')

@@ -1,12 +1,28 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { Alert } from '../components/Alert'
+import { AuthCard, AuthLink } from '../components/AuthCard'
 import { Button } from '../components/Button'
 import { TextField } from '../components/Field'
 import { ApiError, errorMessage } from '../lib/api'
 import { homeFor, useAuth } from '../lib/auth'
+import type { Role } from '../lib/session'
 
-export function LoginPage() {
+const copy = {
+  carrier: {
+    eyebrow: 'Transportadora',
+    title: 'Entrar no painel',
+    subtitle: 'Acompanhe as entregas, os motoristas e o que precisa de atenção hoje.',
+  },
+  driver: {
+    eyebrow: 'Motorista',
+    title: 'Entrar no app',
+    subtitle: 'Veja suas entregas do dia e atualize o status com um toque.',
+  },
+}
+
+/** Login de cada público. A API é a mesma; quem entra vai para a área do próprio papel. */
+export function LoginPage({ audience }: { audience: Role }) {
   const { state, login } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -30,34 +46,54 @@ export function LoginPage() {
     }
   }
 
+  const text = copy[audience]
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4">
-      <main className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-lg font-bold text-brand-800">Rastreia</p>
-        <h1 className="mt-1 text-2xl font-bold">Entrar</h1>
-        <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
-          {error && <Alert>{error}</Alert>}
-          <TextField
-            label="E-mail"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <TextField
-            label="Senha"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button type="submit" loading={sending}>
-            Entrar
-          </Button>
-        </form>
-      </main>
-    </div>
+    <AuthCard
+      eyebrow={text.eyebrow}
+      title={text.title}
+      subtitle={text.subtitle}
+      footer={
+        audience === 'carrier' ? (
+          <>
+            <p>
+              Ainda não usa o Rastreia? <AuthLink to="/transportadora/cadastro">Cadastre sua transportadora</AuthLink>
+            </p>
+            <p>
+              É motorista? <AuthLink to="/motorista/entrar">Entre pelo app do motorista</AuthLink>
+            </p>
+          </>
+        ) : (
+          <>
+            <p>Sua conta é criada pela transportadora. Esqueceu a senha? Peça uma nova para ela.</p>
+            <p>
+              É transportadora? <AuthLink to="/transportadora/entrar">Entre no painel</AuthLink>
+            </p>
+          </>
+        )
+      }
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        {error && <Alert>{error}</Alert>}
+        <TextField
+          label="E-mail"
+          type="email"
+          autoComplete="username"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <TextField
+          label="Senha"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Button type="submit" loading={sending}>
+          Entrar
+        </Button>
+      </form>
+    </AuthCard>
   )
 }

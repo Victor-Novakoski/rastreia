@@ -13,6 +13,7 @@ const messages: Record<string, string> = {
   'is too common': 'Senha muito comum. Escolha outra.',
   'is required when the delivery fails': 'Conte o motivo da falha.',
   'must be an existing driver': 'Escolha um motorista da lista.',
+  'must be a valid CNPJ': 'CNPJ inválido. Confira os números.',
 }
 
 export type FieldErrors = Record<string, string>
