@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 3 — Front-end**
+**Etapa atual: fechar a 4 (Trivy) e seguir para a 5 — Tempo real**
 
 ## Etapa 1 — Base da API ✅
 
@@ -43,7 +43,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Testes de integração com Postgres real (testcontainers)
 - [x] `Idempotency-Key` no `POST /deliveries` (#9)
 
-## Etapa 3 — Front-end (React + TypeScript)
+## Etapa 3 — Front-end (React + TypeScript) ✅
 
 - [x] Base do front em `web/` (Vite, React, TypeScript, Tailwind, Vitest), no `docker compose up` e na CI
 - [x] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
@@ -54,8 +54,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] App do motorista (mobile first): lista das entregas, mapa e troca de status com um toque
 - [x] Página pública de rastreio
 - [x] Validação nos formulários e bloqueio durante envio (#2, #9)
-- [ ] Busca de entrega por código ou destinatário no painel (precisa de filtro na API)
-- [ ] CSP e regras contra XSS (#20)
+- [x] CSP e regras contra XSS (#20)
 
 ## Etapa 4 — CI (GitHub Actions) 🟡
 
@@ -81,6 +80,13 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 
 ## Etapa 7 — Deploy na AWS
 
+- [ ] Cabeçalho `frame-ancestors 'none'` na CDN do front (#20)
 - [ ] Infra (banco em sub-rede privada, segredos no Secrets Manager/SSM, HTTPS) (#1, #16, #25)
 - [ ] Usuário do banco com privilégio mínimo e backups criptografados (#25)
 - [ ] Alertas de falhas de login e erros 5xx (#26)
+
+## Sem etapa
+
+Ideias que surgiram no caminho e ainda não têm lugar.
+
+- [ ] Busca de entrega por código ou destinatário no painel (precisa de filtro na API)

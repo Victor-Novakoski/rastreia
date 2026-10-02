@@ -29,7 +29,7 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 | 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
 | 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
 | 19 | CORS | ✅ | — | Regra do navegador que diz quais sites podem chamar a API. |
-| 20 | XSS | ⚪ | Etapa 3 | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
+| 20 | XSS | ✅ | — | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
 | 21 | Headers de segurança | ✅ | — | Cabeçalhos HTTP que mandam o navegador se proteger (ex.: não abrir a página dentro de iframe, só usar HTTPS). |
 | 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 | Conexões lentas ou requisições enormes que prendem o servidor e derrubam a API. |
 | 23 | Falsificação de IP | ✅ | — | Cliente mente o IP pelo cabeçalho X-Forwarded-For para escapar do rate limit. |
@@ -207,9 +207,13 @@ O único cookie é o `rastreia_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/a
 - Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
 - `credentials` liberado, porque o refresh token vai no cookie (item 18). Por isso a lista de origens nunca pode ter `*`.
 
-## 20. XSS — ⚪
+## 20. XSS — ✅
 
-Etapa 3. React já escapa o conteúdo; proibido `dangerouslySetInnerHTML` com dado vindo da API. Content-Security-Policy restritiva no front. O token de acesso fica em memória, não em `localStorage`.
+- React escapa todo texto vindo da API. O oxlint barra `dangerouslySetInnerHTML` (`react/no-danger`), links `javascript:` e `target="_blank"` sem `rel="noopener noreferrer"`.
+- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL`. No `npm run dev` ela fica de fora, porque o hot reload do Vite usa script inline.
+- O access token fica em memória, não em `localStorage`; o refresh token está num cookie `HttpOnly`. Um XSS não leva a sessão embora.
+
+**Deploy (etapa 7):** `frame-ancestors` não funciona em `<meta>`, então a CDN do front precisa mandar `Content-Security-Policy: frame-ancestors 'none'` (ou `X-Frame-Options: DENY`) no cabeçalho.
 
 ## 21. Headers de segurança — ✅
 
