@@ -42,6 +42,11 @@ export function listDeliveries(api: Api, params: { status?: Status; page: number
   return api<Delivery[]>(`/deliveries?${q}`, { signal })
 }
 
+/** Até 100 entregas do motorista, mais recentes primeiro. */
+export function listMyDeliveries(api: Api, signal?: AbortSignal) {
+  return api<Delivery[]>('/me/deliveries?size=100', { signal })
+}
+
 export function getDelivery(api: Api, id: number, signal?: AbortSignal) {
   return api<Delivery>(`/deliveries/${id}`, { signal })
 }

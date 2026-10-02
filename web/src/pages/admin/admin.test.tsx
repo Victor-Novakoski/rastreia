@@ -121,8 +121,8 @@ describe('painel', () => {
   })
 
   it('motorista não entra no painel', async () => {
-    mockApi({ 'POST /auth/refresh': () => [200, { ...adminSession, role: 'driver' }] })
+    mockApi({ 'POST /auth/refresh': () => [200, { ...adminSession, role: 'driver' }], 'GET /me/deliveries': () => [200, []] })
     renderApp('/admin/entregas')
-    expect(await screen.findByRole('heading', { name: 'App do motorista' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Para fazer (0)' })).toBeInTheDocument()
   })
 })

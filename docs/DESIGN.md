@@ -100,5 +100,6 @@ Fonte do sistema (`system-ui`): nada para baixar, o que ajuda o rastreio públic
 - `TextField`, `TextArea`, `SelectField`: rótulo, controle com 44 px de altura e erro embaixo, ligado por `aria-describedby`.
 - `Alert`: erro (`role="alert"`) ou sucesso (`role="status"`) no topo do formulário.
 - `Loading`, `LoadError`, `Empty`: os estados de carregando, erro (com "Tentar de novo") e vazio.
+- `DriverLayout`: cabeçalho fixo e uma coluna para o celular. No app do motorista, os botões de status têm 56 px de altura e dizem a ação ("Saí para entrega", "Entreguei"); "Não consegui entregar" é contornado em vermelho e abre o campo do motivo.
 
 Ícones são SVG próprios em `StatusIcon`, sem biblioteca.

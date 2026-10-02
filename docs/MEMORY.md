@@ -4,13 +4,16 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 3 (front-end) em andamento: rastreio público, refresh token e painel admin prontos; faltam o app do motorista e a CSP. Ver [TASKS.md](TASKS.md).
+- **Etapa:** 3 (front-end) em andamento: rastreio público, refresh token, painel admin e app do motorista prontos; falta a CSP. Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — App do motorista lê até 100 entregas de `/me/deliveries` e acha a entrega na lista.** *A API não tem `GET /me/deliveries/{id}`, e 100 cobre o dia de um motorista; entregas antigas somem da lista, o que não atrapalha.* (rota nova na API)
+- **2026-10-02 — No app do motorista, 409 de uma repetição conta como sucesso se o status já é o pedido.** *Com sinal ruim, o primeiro envio pode chegar e a resposta não; o motorista toca de novo e não deve ver erro.*
 
 - **2026-10-02 — TanStack Query no painel.** *Lista, detalhe e formulários compartilham dados e precisam invalidar o cache depois de cada mudança; escrever isso à mão seria mais código e mais bug.* (fetch com useEffect)
 - **2026-10-02 — Access token só em memória, renovado no 401.** *Recarregar a página chama `/auth/refresh` com o cookie; um 401 renova uma vez e repete a chamada. Os refreshes simultâneos dividem a mesma requisição, porque usar o mesmo refresh token duas vezes derruba a sessão.* (`localStorage`, que o XSS lê; renovar por timer)
