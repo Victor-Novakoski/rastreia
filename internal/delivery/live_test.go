@@ -43,7 +43,7 @@ func TestAnnounce_AddEventReachesPanelAndTracking(t *testing.T) {
 
 	created := pub.take()
 	require.Len(t, created, 1, "a new delivery only reaches the panel")
-	assert.Equal(t, TopicPanel, created[0].topic)
+	assert.Equal(t, PanelTopic(1), created[0].topic)
 	assert.JSONEq(t, `{"delivery_id":`+strconv.FormatInt(d.ID, 10)+`,"status":"pending"}`, string(created[0].msg))
 
 	_, err := svc.AddEvent(context.Background(), driverA, d.ID, EventInput{Status: StatusPickedUp})
@@ -51,7 +51,7 @@ func TestAnnounce_AddEventReachesPanelAndTracking(t *testing.T) {
 
 	msgs := pub.take()
 	require.Len(t, msgs, 2)
-	assert.Equal(t, TopicPanel, msgs[0].topic)
+	assert.Equal(t, PanelTopic(1), msgs[0].topic)
 	assert.JSONEq(t, `{"delivery_id":`+strconv.FormatInt(d.ID, 10)+`,"status":"picked_up"}`, string(msgs[0].msg))
 
 	assert.Equal(t, TrackingTopic(d.TrackingCode), msgs[1].topic)
@@ -79,11 +79,11 @@ func TestAnnounce_RenameReloadsPublicPage(t *testing.T) {
 	d := newAssigned(t, svc)
 	pub.take()
 
-	_, err := svc.Update(context.Background(), d.ID, UpdateInput{Address: ptr("Rua Nova, 10")})
+	_, err := svc.Update(context.Background(), owner, d.ID, UpdateInput{Address: ptr("Rua Nova, 10")})
 	require.NoError(t, err)
 	assert.Len(t, pub.take(), 1, "an address change only reaches the panel")
 
-	_, err = svc.Update(context.Background(), d.ID, UpdateInput{RecipientName: ptr("Maria Souza")})
+	_, err = svc.Update(context.Background(), owner, d.ID, UpdateInput{RecipientName: ptr("Maria Souza")})
 	require.NoError(t, err)
 	msgs := pub.take()
 	require.Len(t, msgs, 2)

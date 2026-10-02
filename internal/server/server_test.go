@@ -26,10 +26,11 @@ func (noUsers) GetUserByEmail(context.Context, string) (store.User, error) {
 
 func newTestServer(opts Options) http.Handler {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
+	authHandler := auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{})
 	return New(Deps{
 		Tokens:     tokens,
-		Auth:       auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{}),
-		Users:      user.NewHandler(user.NewService(nil)),
+		Auth:       authHandler,
+		Users:      user.NewHandler(user.NewService(nil), authHandler),
 		Deliveries: delivery.NewHandler(delivery.NewService(nil)),
 		Ready:      func(*http.Request) error { return nil },
 		Options:    opts,

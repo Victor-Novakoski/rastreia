@@ -81,7 +81,7 @@ func (s *Sessions) Rotate(ctx context.Context, raw string) (Claims, RefreshToken
 	if err != nil {
 		return Claims{}, RefreshToken{}, err
 	}
-	return Claims{UserID: rt.UserID, Role: rt.Role}, next, nil
+	return Claims{UserID: rt.UserID, Role: rt.Role, CarrierID: rt.CarrierID}, next, nil
 }
 
 // End revokes the session of the given token (logout). Unknown tokens are ignored.

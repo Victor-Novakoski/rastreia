@@ -113,16 +113,21 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | Método | Rota | Quem usa |
 | --- | --- | --- |
 | GET | `/health` | público |
-| POST | `/auth/login` | admin e motorista |
-| POST | `/auth/refresh`, `/auth/logout` | admin e motorista (cookie de sessão) |
-| GET, POST | `/drivers` | admin |
-| GET, POST | `/deliveries` | admin |
-| GET, PATCH | `/deliveries/{id}` | admin |
-| GET, POST | `/deliveries/{id}/events` | admin e motorista dono da entrega |
+| POST | `/auth/signup` | público: cadastro da transportadora, já logando |
+| POST | `/auth/login` | transportadora e motorista |
+| POST | `/auth/refresh`, `/auth/logout` | transportadora e motorista (cookie de sessão) |
+| GET | `/me` | transportadora e motorista: usuário e transportadora |
+| GET | `/summary` | transportadora: números do painel |
+| GET, POST | `/drivers` | transportadora |
+| GET, POST | `/deliveries` | transportadora |
+| GET, PATCH | `/deliveries/{id}` | transportadora |
+| GET, POST | `/deliveries/{id}/events` | transportadora e motorista dono da entrega |
 | GET | `/me/deliveries` | motorista |
 | GET | `/public/tracking/{code}` | público (30 req/min por IP) |
 | GET | `/public/tracking/{code}/live` | público, WebSocket com cada mudança |
-| GET | `/live/deliveries` | admin, WebSocket do painel (token na primeira mensagem) |
+| GET | `/live/deliveries` | transportadora, WebSocket do painel (token na primeira mensagem) |
+
+Cada transportadora só enxerga os próprios motoristas e entregas; o que é de outra responde 404.
 
 ## Estrutura
 
@@ -135,7 +140,7 @@ internal/
   database/           conexão, migrations e queries SQL
   store/              código gerado pelo sqlc
   delivery/           entregas, eventos de status, rastreio público e idempotência
-  user/               motoristas e admin inicial
+  user/               cadastro da transportadora, motoristas e /me
   httpx/, apperr/     helpers de HTTP e erros
   testdb/             Postgres temporário para os testes de integração
 web/                  front-end em React: rastreio público, painel admin e app do motorista

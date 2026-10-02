@@ -42,7 +42,7 @@ func (f *fakeSessions) GetRefreshToken(_ context.Context, hash []byte) (store.Ge
 		if bytes.Equal(t.TokenHash, hash) {
 			return store.GetRefreshTokenRow{
 				ID: t.ID, UserID: t.UserID, FamilyID: t.FamilyID, ExpiresAt: t.ExpiresAt,
-				UsedAt: t.UsedAt, RevokedAt: t.RevokedAt, Role: f.roles[t.UserID],
+				UsedAt: t.UsedAt, RevokedAt: t.RevokedAt, Role: f.roles[t.UserID], CarrierID: 1,
 			}, nil
 		}
 	}
@@ -82,7 +82,7 @@ func TestSessions_Rotate(t *testing.T) {
 
 	claims, second, err := s.Rotate(ctx, first.Value)
 	require.NoError(t, err)
-	assert.Equal(t, Claims{UserID: 7, Role: RoleDriver}, claims)
+	assert.Equal(t, Claims{UserID: 7, Role: RoleDriver, CarrierID: 1}, claims)
 	assert.NotEqual(t, first.Value, second.Value)
 
 	_, third, err := s.Rotate(ctx, second.Value)

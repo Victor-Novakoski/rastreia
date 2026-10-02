@@ -10,12 +10,13 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (name, email, password_hash, role)
-VALUES ($1, $2, $3, $4)
-RETURNING id, name, email, password_hash, role, created_at
+INSERT INTO users (carrier_id, name, email, password_hash, role)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, email, password_hash, role, created_at, carrier_id
 `
 
 type CreateUserParams struct {
+	CarrierID    int64
 	Name         string
 	Email        string
 	PasswordHash string
@@ -24,6 +25,7 @@ type CreateUserParams struct {
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
+		arg.CarrierID,
 		arg.Name,
 		arg.Email,
 		arg.PasswordHash,
@@ -37,12 +39,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PasswordHash,
 		&i.Role,
 		&i.CreatedAt,
+		&i.CarrierID,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, role, created_at FROM users WHERE email = $1
+SELECT id, name, email, password_hash, role, created_at, carrier_id FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -55,12 +58,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PasswordHash,
 		&i.Role,
 		&i.CreatedAt,
+		&i.CarrierID,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, role, created_at FROM users WHERE id = $1
+SELECT id, name, email, password_hash, role, created_at, carrier_id FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
@@ -73,16 +77,22 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.PasswordHash,
 		&i.Role,
 		&i.CreatedAt,
+		&i.CarrierID,
 	)
 	return i, err
 }
 
-const listUsersByRole = `-- name: ListUsersByRole :many
-SELECT id, name, email, password_hash, role, created_at FROM users WHERE role = $1 ORDER BY name
+const listCarrierUsersByRole = `-- name: ListCarrierUsersByRole :many
+SELECT id, name, email, password_hash, role, created_at, carrier_id FROM users WHERE carrier_id = $1 AND role = $2 ORDER BY name
 `
 
-func (q *Queries) ListUsersByRole(ctx context.Context, role string) ([]User, error) {
-	rows, err := q.db.Query(ctx, listUsersByRole, role)
+type ListCarrierUsersByRoleParams struct {
+	CarrierID int64
+	Role      string
+}
+
+func (q *Queries) ListCarrierUsersByRole(ctx context.Context, arg ListCarrierUsersByRoleParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listCarrierUsersByRole, arg.CarrierID, arg.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +107,7 @@ func (q *Queries) ListUsersByRole(ctx context.Context, role string) ([]User, err
 			&i.PasswordHash,
 			&i.Role,
 			&i.CreatedAt,
+			&i.CarrierID,
 		); err != nil {
 			return nil, err
 		}

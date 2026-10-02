@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	RoleAdmin  = "admin"
-	RoleDriver = "driver"
+	// RoleCarrier runs a carrier (transportadora): its deliveries and drivers.
+	RoleCarrier = "carrier"
+	RoleDriver  = "driver"
 
 	issuer   = "rastreia"
 	audience = "rastreia-api"
@@ -22,10 +23,13 @@ const (
 type Claims struct {
 	UserID int64
 	Role   string
+	// CarrierID is the carrier the user belongs to; every query is scoped by it.
+	CarrierID int64
 }
 
 type tokenClaims struct {
-	Role string `json:"role"`
+	Role      string `json:"role"`
+	CarrierID int64  `json:"cid"`
 	jwt.RegisteredClaims
 }
 
@@ -42,7 +46,8 @@ func NewTokens(secret string, ttl time.Duration) *Tokens {
 func (t *Tokens) Issue(c Claims) (string, error) {
 	now := t.now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenClaims{
-		Role: c.Role,
+		Role:      c.Role,
+		CarrierID: c.CarrierID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Audience:  jwt.ClaimStrings{audience},
@@ -74,8 +79,11 @@ func (t *Tokens) ParseExpiry(raw string) (Claims, time.Time, error) {
 	if err != nil {
 		return Claims{}, time.Time{}, fmt.Errorf("invalid subject: %w", err)
 	}
-	if tc.Role != RoleAdmin && tc.Role != RoleDriver {
+	if tc.Role != RoleCarrier && tc.Role != RoleDriver {
 		return Claims{}, time.Time{}, errors.New("invalid role")
 	}
-	return Claims{UserID: id, Role: tc.Role}, tc.ExpiresAt.Time, nil
+	if tc.CarrierID <= 0 {
+		return Claims{}, time.Time{}, errors.New("invalid carrier")
+	}
+	return Claims{UserID: id, Role: tc.Role, CarrierID: tc.CarrierID}, tc.ExpiresAt.Time, nil
 }

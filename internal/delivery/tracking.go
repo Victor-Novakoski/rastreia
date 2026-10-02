@@ -19,7 +19,9 @@ var trackingCodeRe = regexp.MustCompile(`^RS[` + codeAlphabet + `]{10}$`)
 // Tracking is what anyone holding the tracking code may see. It leaves out
 // the recipient's e-mail, address and last name, the driver and event notes.
 type Tracking struct {
-	TrackingCode       string          `json:"tracking_code"`
+	TrackingCode string `json:"tracking_code"`
+	// CarrierName says who is delivering, as on a shipping label.
+	CarrierName        string          `json:"carrier_name"`
 	Status             string          `json:"status"`
 	RecipientFirstName string          `json:"recipient_first_name"`
 	UpdatedAt          time.Time       `json:"updated_at"`
@@ -42,8 +44,13 @@ func (s *Service) Track(ctx context.Context, code string) (Tracking, error) {
 	if err != nil {
 		return Tracking{}, err
 	}
+	carrier, err := s.store.GetCarrier(ctx, d.CarrierID)
+	if err != nil {
+		return Tracking{}, err
+	}
 	t := Tracking{
 		TrackingCode:       d.TrackingCode,
+		CarrierName:        carrier.Name,
 		Status:             d.Status,
 		RecipientFirstName: firstName(d.RecipientName),
 		UpdatedAt:          d.UpdatedAt,

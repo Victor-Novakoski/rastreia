@@ -18,10 +18,12 @@ func TestPG_SubscribeListAndForget(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	q := store.New(pool)
-	admin, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin})
+	carrierID := testdb.Carrier(t, pool)
+	u, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: carrierID, Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier})
 	require.NoError(t, err)
 	deliveries := delivery.NewService(delivery.NewPGStore(pool))
-	d, err := deliveries.Create(ctx, admin.ID, delivery.CreateInput{
+	owner := auth.Claims{UserID: u.ID, Role: auth.RoleCarrier, CarrierID: carrierID}
+	d, err := deliveries.Create(ctx, owner, delivery.CreateInput{
 		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
 	})
 	require.NoError(t, err)

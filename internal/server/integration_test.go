@@ -28,17 +28,20 @@ import (
 const testOrigin = "http://localhost:5173"
 
 // testAPI is the real router on a real database, with one token per user.
+// owner runs the carrier with drivers A and B; rival runs another carrier.
 type testAPI struct {
-	t       *testing.T
-	h       http.Handler
-	q       *store.Queries
-	admin   string
-	driverA string
-	driverB string
-	broker  *countingBroker
-	pool    *pgxpool.Pool
-	tokens  *auth.Tokens
-	opts    Options
+	t         *testing.T
+	h         http.Handler
+	q         *store.Queries
+	carrierID int64
+	owner     string
+	driverA   string
+	driverB   string
+	rival     string
+	broker    *countingBroker
+	pool      *pgxpool.Pool
+	tokens    *auth.Tokens
+	opts      Options
 }
 
 // newInstance builds the router as cmd/api does, on a shared database.
@@ -56,10 +59,11 @@ func newInstance(t *testing.T, pool *pgxpool.Pool, tokens *auth.Tokens, opts Opt
 	q := store.New(pool)
 	deliveries := delivery.NewService(delivery.NewPGStore(pool)).WithPublisher(broker)
 	live := realtime.NewServer(t.Context(), broker, realtime.Options{Origins: []string{testOrigin}})
+	authHandler := auth.NewHandler(q, tokens, guard, auth.NewSessions(q, time.Hour), auth.CookieOptions{AllowedOrigins: []string{testOrigin}})
 	return New(Deps{
 		Tokens:     tokens,
-		Auth:       auth.NewHandler(q, tokens, guard, auth.NewSessions(q, time.Hour), auth.CookieOptions{AllowedOrigins: []string{testOrigin}}),
-		Users:      user.NewHandler(user.NewService(q)),
+		Auth:       authHandler,
+		Users:      user.NewHandler(user.NewService(q), authHandler),
 		Deliveries: delivery.NewHandler(deliveries),
 		Live:       delivery.NewLiveHandler(deliveries, live, tokens),
 		Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
@@ -87,20 +91,22 @@ func newAPI(t *testing.T, opts Options) *testAPI {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
 	h, broker := newInstance(t, pool, tokens, opts)
 
-	token := func(name, role string) string {
+	carrierID, rivalID := testdb.Carrier(t, pool), testdb.Carrier(t, pool)
+	token := func(carrierID int64, name, role string) string {
 		u, err := q.CreateUser(context.Background(), store.CreateUserParams{
-			Name: name, Email: strings.ToLower(name) + "@example.com", PasswordHash: "x", Role: role,
+			CarrierID: carrierID, Name: name, Email: strings.ToLower(name) + "@example.com", PasswordHash: "x", Role: role,
 		})
 		require.NoError(t, err)
-		tok, err := tokens.Issue(auth.Claims{UserID: u.ID, Role: role})
+		tok, err := tokens.Issue(auth.Claims{UserID: u.ID, Role: role, CarrierID: carrierID})
 		require.NoError(t, err)
 		return tok
 	}
 	return &testAPI{
-		t: t, h: h, q: q, broker: broker, pool: pool, tokens: tokens, opts: opts,
-		admin:   token("Admin", auth.RoleAdmin),
-		driverA: token("Ana", auth.RoleDriver),
-		driverB: token("Bruno", auth.RoleDriver),
+		t: t, h: h, q: q, broker: broker, pool: pool, tokens: tokens, opts: opts, carrierID: carrierID,
+		owner:   token(carrierID, "Dona", auth.RoleCarrier),
+		driverA: token(carrierID, "Ana", auth.RoleDriver),
+		driverB: token(carrierID, "Bruno", auth.RoleDriver),
+		rival:   token(rivalID, "Rival", auth.RoleCarrier),
 	}
 }
 
@@ -119,10 +125,10 @@ func (a *testAPI) do(method, path, token, body string, into any) int {
 	return rec.Code
 }
 
-// driverID reads the id of a driver from the admin listing.
+// driverID reads the id of a driver from the owner listing.
 func (a *testAPI) driverID(name string) int64 {
 	var drivers []user.User
-	require.Equal(a.t, http.StatusOK, a.do(http.MethodGet, "/drivers", a.admin, "", &drivers))
+	require.Equal(a.t, http.StatusOK, a.do(http.MethodGet, "/drivers", a.owner, "", &drivers))
 	for _, d := range drivers {
 		if d.Name == name {
 			return d.ID
@@ -136,7 +142,7 @@ func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 	a := newAPI(t, Options{})
 	var d delivery.Delivery
 	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`, a.driverID("Ana"))
-	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin, body, &d))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 	path := fmt.Sprintf("/deliveries/%d", d.ID)
 
 	// Driver B: the delivery of driver A does not exist for him.
@@ -145,7 +151,7 @@ func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 	assert.Empty(t, list)
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path+"/events", a.driverB, "", nil))
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPost, path+"/events", a.driverB, `{"status":"picked_up"}`, nil))
-	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, path, a.driverB, "", nil), "admin routes stay closed to drivers")
+	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, path, a.driverB, "", nil), "carrier routes stay closed to drivers")
 	assert.Equal(t, http.StatusForbidden, a.do(http.MethodPatch, path, a.driverB, `{"driver_id":1}`, nil))
 
 	// Driver A works normally.
@@ -153,7 +159,7 @@ func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 	require.Len(t, list, 1)
 	assert.Equal(t, http.StatusCreated, a.do(http.MethodPost, path+"/events", a.driverA, `{"status":"picked_up"}`, nil))
 	assert.Equal(t, http.StatusConflict, a.do(http.MethodPost, path+"/events", a.driverA, `{"status":"picked_up"}`, nil), "repeating an event")
-	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, "/me/deliveries", a.admin, "", nil), "/me is for drivers")
+	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, "/me/deliveries", a.owner, "", nil), "/me is for drivers")
 
 	// Without a token nothing but the public routes answer.
 	assert.Equal(t, http.StatusUnauthorized, a.do(http.MethodGet, "/me/deliveries", "", "", nil))
@@ -163,7 +169,7 @@ func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 func TestIntegration_PublicTracking(t *testing.T) {
 	a := newAPI(t, Options{TrackingRateLimit: 5})
 	var d delivery.Delivery
-	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin,
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner,
 		`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10"}`, &d))
 
 	req := httptest.NewRequest(http.MethodGet, "/public/tracking/"+d.TrackingCode, nil)
@@ -190,7 +196,7 @@ func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	post := func(key, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/deliveries", strings.NewReader(body))
 		req.RemoteAddr = "203.0.113.7:1234"
-		req.Header.Set("Authorization", "Bearer "+a.admin)
+		req.Header.Set("Authorization", "Bearer "+a.owner)
 		req.Header.Set("Idempotency-Key", key)
 		rec := httptest.NewRecorder()
 		a.h.ServeHTTP(rec, req)
@@ -210,7 +216,7 @@ func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, other.Code)
 
 	var list []delivery.Delivery
-	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", a.admin, "", &list))
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", a.owner, "", &list))
 	assert.Len(t, list, 1)
 }
 
@@ -219,7 +225,7 @@ func TestIntegration_RefreshTokenRotation(t *testing.T) {
 	hash, err := auth.HashPassword("senha-da-carla")
 	require.NoError(t, err)
 	_, err = a.q.CreateUser(context.Background(), store.CreateUserParams{
-		Name: "Carla", Email: "carla@example.com", PasswordHash: hash, Role: auth.RoleDriver,
+		CarrierID: a.carrierID, Name: "Carla", Email: "carla@example.com", PasswordHash: hash, Role: auth.RoleDriver,
 	})
 	require.NoError(t, err)
 
@@ -278,7 +284,7 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 	var d delivery.Delivery
 	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
 		a.driverID("Ana"))
-	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin, body, &d))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 
 	_, status, err := dial("/public/tracking/RSAAAAAAAAAA/live")
 	require.Error(t, err)
@@ -288,13 +294,13 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, driverPanel.Write(t.Context(), websocket.MessageText, []byte(`{"token":"`+a.driverA+`"}`)))
 	_, err = read(driverPanel)
-	assert.Equal(t, realtime.StatusUnauthorized, websocket.CloseStatus(err), "the panel stream is for admins only")
+	assert.Equal(t, realtime.StatusUnauthorized, websocket.CloseStatus(err), "the panel stream is for carriers only")
 
 	public, _, err := dial("/public/tracking/" + d.TrackingCode + "/live")
 	require.NoError(t, err)
 	panel, _, err := dial("/live/deliveries")
 	require.NoError(t, err)
-	require.NoError(t, panel.Write(t.Context(), websocket.MessageText, []byte(`{"token":"`+a.admin+`"}`)))
+	require.NoError(t, panel.Write(t.Context(), websocket.MessageText, []byte(`{"token":"`+a.owner+`"}`)))
 	require.Eventually(t, func() bool { return a.broker.subs.Load() == 2 }, 5*time.Second, 10*time.Millisecond)
 
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, fmt.Sprintf("/deliveries/%d/events", d.ID), a.driverA,
@@ -312,6 +318,69 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 	msg, err = read(panel)
 	require.NoError(t, err)
 	assert.JSONEq(t, fmt.Sprintf(`{"delivery_id":%d,"status":"picked_up"}`, d.ID), msg)
+}
+
+func TestIntegration_CarriersAreIsolated(t *testing.T) {
+	a := newAPI(t, Options{})
+	var d delivery.Delivery
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`, a.driverID("Ana"))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
+	path := fmt.Sprintf("/deliveries/%d", d.ID)
+
+	var list []delivery.Delivery
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", a.rival, "", &list))
+	assert.Empty(t, list)
+	var drivers []user.User
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/drivers", a.rival, "", &drivers))
+	assert.Empty(t, drivers)
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path, a.rival, "", nil))
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPatch, path, a.rival, `{"address":"Rua B"}`, nil))
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path+"/events", a.rival, "", nil))
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPost, path+"/events", a.rival, `{"status":"picked_up"}`, nil))
+	assert.Equal(t, http.StatusUnprocessableEntity, a.do(http.MethodPost, "/deliveries", a.rival, body, nil),
+		"another carrier's driver cannot be assigned")
+
+	var sum delivery.Summary
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/summary", a.rival, "", &sum))
+	assert.Zero(t, sum.ByStatus[delivery.StatusPending])
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/summary", a.owner, "", &sum))
+	assert.Equal(t, int64(1), sum.ByStatus[delivery.StatusPending])
+	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, "/summary", a.driverA, "", nil))
+}
+
+func TestIntegration_SignUp(t *testing.T) {
+	a := newAPI(t, Options{})
+	signUp := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/auth/signup", strings.NewReader(body))
+		req.RemoteAddr = "203.0.113.7:1234"
+		rec := httptest.NewRecorder()
+		a.h.ServeHTTP(rec, req)
+		return rec
+	}
+	body := `{"carrier_name":"Expresso Sul","document":"11.222.333/0001-81","name":"Carla","email":"carla@example.com","password":"transporte-forte"}`
+
+	rec := signUp(body)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp struct {
+		Token string `json:"token"`
+		Role  string `json:"role"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, auth.RoleCarrier, resp.Role)
+	assert.Contains(t, rec.Header().Get("Set-Cookie"), auth.RefreshCookie, "signing up also logs in")
+
+	var me user.Me
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/me", resp.Token, "", &me))
+	assert.Equal(t, "Expresso Sul", me.Carrier.Name)
+	assert.Equal(t, "Carla", me.Name)
+	var list []delivery.Delivery
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", resp.Token, "", &list))
+	assert.Empty(t, list, "a new carrier starts empty")
+
+	assert.Equal(t, http.StatusConflict, signUp(body).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, signUp(`{"carrier_name":"","name":"X","email":"x@example.com","password":"transporte-forte"}`).Code)
+	assert.Equal(t, http.StatusBadRequest, signUp(`{"carrier_name":"X","role":"carrier"}`).Code, "unknown fields are refused")
+	assert.Equal(t, http.StatusUnauthorized, a.do(http.MethodGet, "/me", "", "", nil))
 }
 
 // dialWS opens a WebSocket from the front's origin and returns the HTTP
@@ -354,7 +423,7 @@ func TestIntegration_InstancesShareRedis(t *testing.T) {
 	var d delivery.Delivery
 	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
 		a.driverID("Ana"))
-	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.admin, body, &d))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 
 	public, _, err := dialWS(t, srvB.URL, "/public/tracking/"+d.TrackingCode+"/live")
 	require.NoError(t, err)

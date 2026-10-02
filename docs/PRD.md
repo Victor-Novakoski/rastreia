@@ -10,7 +10,8 @@ Transportadoras pequenas e médias acompanham entregas por planilha e WhatsApp. 
 
 Uma plataforma de rastreio de entregas com três pontas:
 
-1. **Painel da transportadora** (admin): cadastra motoristas e entregas, atribui entregas e acompanha tudo.
+0. **Página inicial**: explica o produto e leva cada pessoa à sua área ("Sou transportadora", "Sou motorista", "Rastrear encomenda").
+1. **Painel da transportadora**: a transportadora se cadastra sozinha, cadastra motoristas e entregas, atribui entregas e acompanha tudo. Cada transportadora só vê os próprios dados.
 2. **App do motorista** (web mobile): vê as próprias entregas e atualiza o status na rua, com poucos toques.
 3. **Link público de rastreio** (cliente final): abre pelo código de rastreio, sem login, e vê o status em tempo real.
 
@@ -18,7 +19,7 @@ Uma plataforma de rastreio de entregas com três pontas:
 
 | Persona | Quem é | O que precisa |
 | --- | --- | --- |
-| Admin | Operador da transportadora | Cadastrar e distribuir entregas rápido; ver o que está atrasado ou falhou |
+| Transportadora | Dono ou operador da transportadora | Começar a usar sem falar com ninguém; cadastrar e distribuir entregas rápido; ver o que está atrasado ou falhou |
 | Motorista | Entregador, no celular, muitas vezes com sinal ruim | Lista do dia e botão grande para mudar status; nada de formulário longo |
 | Cliente final | Quem vai receber | Saber em que pé está a entrega sem criar conta nem ligar |
 
@@ -36,29 +37,36 @@ pending ──► picked_up ──► in_transit ──► delivered
 - `delivered`: entregue (estado final).
 - `failed`: não foi possível entregar, com motivo (estado final nesta versão).
 
-O status só muda por **eventos** registrados pelo motorista (ou admin), nunca por edição direta. Cada evento guarda quem mudou, quando e uma observação opcional, formando o histórico que o cliente vê.
+O status só muda por **eventos** registrados pelo motorista (ou pela transportadora), nunca por edição direta. Cada evento guarda quem mudou, quando e uma observação opcional, formando o histórico que o cliente vê.
 
 ## Requisitos funcionais
 
 ### Etapa 1 — Base da API (feito)
-- **RF01** Login com e-mail e senha para admin e motorista, devolvendo um token.
-- **RF02** Admin cadastra e lista motoristas.
-- **RF03** Admin cria, lista (com filtro por status e paginação), consulta e edita entregas.
+- **RF01** Login com e-mail e senha para transportadora e motorista, devolvendo um token.
+- **RF02** Transportadora cadastra e lista motoristas.
+- **RF03** Transportadora cria, lista (com filtro por status e paginação), consulta e edita entregas.
 - **RF04** Toda entrega recebe um código de rastreio aleatório e legível (ex.: `RS7K2M9QXA4P`).
 
 ### Etapa 2 — Eventos e rastreio público
 - **RF05** Motorista lista apenas as entregas atribuídas a ele.
-- **RF06** Motorista (ou admin) registra um evento de status seguindo as transições válidas do ciclo acima.
+- **RF06** Motorista (ou transportadora) registra um evento de status seguindo as transições válidas do ciclo acima.
 - **RF07** Consulta pública por código de rastreio, sem login, mostrando status e histórico, **sem dados pessoais** do destinatário (e-mail e endereço completo ficam de fora).
 
 ### Etapa 3 — Front-end
-- **RF08** Painel admin web.
+- **RF08** Painel web da transportadora.
 - **RF09** App web mobile do motorista.
 - **RF10** Página pública de rastreio.
 
 ### Etapas seguintes
 - **RF11** Atualização em tempo real da página de rastreio e do painel (WebSocket).
 - **RF12** Notificação por e-mail ao destinatário quando o status muda (fila).
+
+### Produto (várias transportadoras)
+- **RF13** Várias transportadoras na mesma instalação. Cada uma é um *tenant*: motoristas, entregas e números ficam isolados, e o que é de outra transportadora responde como inexistente.
+- **RF14** Cadastro aberto de transportadora (nome, CNPJ opcional, responsável, e-mail e senha), que já entra logada.
+- **RF15** Página inicial que apresenta o produto e leva a três entradas: transportadora (entrar ou criar conta), motorista (entrar) e rastreio por código.
+- **RF16** Visão geral da transportadora: entregas por status nos últimos 30 dias e entregas sem motorista.
+- **RF17** O rastreio público mostra o nome da transportadora que está entregando.
 
 ## Requisitos não funcionais
 
@@ -71,11 +79,12 @@ O status só muda por **eventos** registrados pelo motorista (ou admin), nunca p
 
 ## Fora de escopo (por enquanto)
 
-- Várias transportadoras na mesma instalação (multi-tenant).
 - Roteirização, mapa com GPS do motorista em tempo real, cálculo de frete.
 - App nativo (iOS/Android); o motorista usa web mobile.
 - Pagamentos, notas fiscais, integração com marketplaces.
-- Cadastro aberto de usuários: só o admin cria contas.
+- Cadastro aberto de motorista: só a transportadora cria a conta do motorista.
+- Vários usuários por transportadora, convites e papéis dentro da transportadora.
+- Planos, cobrança e limites por transportadora.
 
 Pedir algo desta lista significa primeiro mudar este documento.
 

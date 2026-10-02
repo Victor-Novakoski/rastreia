@@ -17,6 +17,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/Victor-Novakoski/rastreia/internal/database"
+	"github.com/Victor-Novakoski/rastreia/internal/store"
 )
 
 var (
@@ -92,3 +93,13 @@ func start() {
 type nopLogger struct{}
 
 func (nopLogger) Printf(string, ...any) {}
+
+// Carrier creates a carrier and returns its id, for tests that need users.
+func Carrier(t *testing.T, pool *pgxpool.Pool) int64 {
+	t.Helper()
+	c, err := store.New(pool).CreateCarrier(context.Background(), store.CreateCarrierParams{Name: "Transportadora Teste"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.ID
+}

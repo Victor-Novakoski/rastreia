@@ -20,12 +20,13 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	q := store.New(pool)
-	u, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin})
+	carrierID := testdb.Carrier(t, pool)
+	u, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: carrierID, Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier})
 	require.NoError(t, err)
-	admin := auth.Claims{UserID: u.ID, Role: auth.RoleAdmin}
+	owner := auth.Claims{UserID: u.ID, Role: auth.RoleCarrier, CarrierID: carrierID}
 	svc := delivery.NewService(delivery.NewPGStore(pool))
 	create := func() delivery.Delivery {
-		d, err := svc.Create(ctx, u.ID, delivery.CreateInput{
+		d, err := svc.Create(ctx, owner, delivery.CreateInput{
 			RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
 		})
 		require.NoError(t, err)
@@ -38,7 +39,7 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 				note := "vizinho do 32 não quis receber"
 				in.Note = &note
 			}
-			_, err := svc.AddEvent(ctx, admin, d.ID, in)
+			_, err := svc.AddEvent(ctx, owner, d.ID, in)
 			require.NoError(t, err)
 		}
 	}
@@ -58,13 +59,13 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
-	got, err := svc.Get(ctx, old.ID)
+	got, err := svc.Get(ctx, owner, old.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Destinatário removido", got.RecipientName)
 	assert.Empty(t, got.RecipientEmail)
 	assert.Empty(t, got.Address)
 	assert.NotNil(t, got.AnonymizedAt)
-	events, err := svc.ListEvents(ctx, admin, old.ID)
+	events, err := svc.ListEvents(ctx, owner, old.ID)
 	require.NoError(t, err)
 	assert.Len(t, events, 4, "history stays")
 	for _, e := range events {
@@ -72,16 +73,16 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	}
 
 	for _, id := range []int64{recent.ID, open.ID} {
-		d, err := svc.Get(ctx, id)
+		d, err := svc.Get(ctx, owner, id)
 		require.NoError(t, err)
 		assert.Equal(t, "Maria Souza", d.RecipientName)
 	}
 
 	// Erased deliveries no longer change, or the recipient's data could come back.
-	_, err = svc.AddEvent(ctx, admin, old.ID, delivery.EventInput{Status: delivery.StatusInTransit})
+	_, err = svc.AddEvent(ctx, owner, old.ID, delivery.EventInput{Status: delivery.StatusInTransit})
 	assert.ErrorIs(t, err, apperr.ErrConflict)
 	name := "Outra Pessoa"
-	_, err = svc.Update(ctx, old.ID, delivery.UpdateInput{RecipientName: &name})
+	_, err = svc.Update(ctx, owner, old.ID, delivery.UpdateInput{RecipientName: &name})
 	assert.ErrorIs(t, err, apperr.ErrConflict)
 
 	n, err = job.Once(ctx)

@@ -14,25 +14,25 @@ const testSecret = "test-secret-with-at-least-32-characters"
 func TestTokens_IssueAndParse(t *testing.T) {
 	tokens := NewTokens(testSecret, time.Hour)
 
-	raw, err := tokens.Issue(Claims{UserID: 42, Role: RoleDriver})
+	raw, err := tokens.Issue(Claims{UserID: 42, Role: RoleDriver, CarrierID: 1})
 	require.NoError(t, err)
 
 	claims, err := tokens.Parse(raw)
 	require.NoError(t, err)
-	assert.Equal(t, Claims{UserID: 42, Role: RoleDriver}, claims)
+	assert.Equal(t, Claims{UserID: 42, Role: RoleDriver, CarrierID: 1}, claims)
 }
 
 func TestTokens_ParseRejects(t *testing.T) {
 	tokens := NewTokens(testSecret, time.Hour)
-	valid, err := tokens.Issue(Claims{UserID: 1, Role: RoleAdmin})
+	valid, err := tokens.Issue(Claims{UserID: 1, Role: RoleCarrier, CarrierID: 1})
 	require.NoError(t, err)
 
 	expired := NewTokens(testSecret, time.Hour)
 	expired.now = func() time.Time { return time.Now().Add(-2 * time.Hour) }
-	expiredToken, err := expired.Issue(Claims{UserID: 1, Role: RoleAdmin})
+	expiredToken, err := expired.Issue(Claims{UserID: 1, Role: RoleCarrier, CarrierID: 1})
 	require.NoError(t, err)
 
-	otherSecret, err := NewTokens("another-secret-with-at-least-32-chars", time.Hour).Issue(Claims{UserID: 1, Role: RoleAdmin})
+	otherSecret, err := NewTokens("another-secret-with-at-least-32-chars", time.Hour).Issue(Claims{UserID: 1, Role: RoleCarrier, CarrierID: 1})
 	require.NoError(t, err)
 
 	unsigned, err := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{"sub": "1", "role": "admin"}).
@@ -43,7 +43,15 @@ func TestTokens_ParseRejects(t *testing.T) {
 		SignedString([]byte(testSecret))
 	require.NoError(t, err)
 
+	// Tokens issued before carriers existed have no carrier and the old role.
+	noCarrier, err := tokens.Issue(Claims{UserID: 1, Role: RoleCarrier})
+	require.NoError(t, err)
+	oldRole, err := tokens.Issue(Claims{UserID: 1, Role: "admin", CarrierID: 1})
+	require.NoError(t, err)
+
 	cases := map[string]string{
+		"no carrier":   noCarrier,
+		"old role":     oldRole,
 		"expired":      expiredToken,
 		"other secret": otherSecret,
 		"alg none":     unsigned,

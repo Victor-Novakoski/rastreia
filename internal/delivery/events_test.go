@@ -15,9 +15,12 @@ import (
 )
 
 var (
-	admin   = auth.Claims{UserID: 1, Role: auth.RoleAdmin}
-	driverA = auth.Claims{UserID: 2, Role: auth.RoleDriver}
-	driverB = auth.Claims{UserID: 3, Role: auth.RoleDriver}
+	owner   = auth.Claims{UserID: 1, Role: auth.RoleCarrier, CarrierID: 1}
+	driverA = auth.Claims{UserID: 2, Role: auth.RoleDriver, CarrierID: 1}
+	driverB = auth.Claims{UserID: 3, Role: auth.RoleDriver, CarrierID: 1}
+	// rival runs another carrier, with its own driver.
+	rival       = auth.Claims{UserID: 4, Role: auth.RoleCarrier, CarrierID: 2}
+	rivalDriver = auth.Claims{UserID: 5, Role: auth.RoleDriver, CarrierID: 2}
 )
 
 // newAssigned creates a delivery assigned to driverA.
@@ -25,7 +28,7 @@ func newAssigned(t *testing.T, svc *Service) Delivery {
 	t.Helper()
 	in := validInput()
 	in.DriverID = ptr(driverA.UserID)
-	d, err := svc.Create(context.Background(), admin.UserID, in)
+	d, err := svc.Create(context.Background(), owner, in)
 	require.NoError(t, err)
 	return d
 }
@@ -80,10 +83,10 @@ func TestAddEvent_InvalidTransitions(t *testing.T) {
 			svc := NewService(newFakeStore())
 			d := newAssigned(t, svc)
 			for _, st := range tc.path {
-				_, err := svc.AddEvent(context.Background(), admin, d.ID, EventInput{Status: st, Note: ptr("x")})
+				_, err := svc.AddEvent(context.Background(), owner, d.ID, EventInput{Status: st, Note: ptr("x")})
 				require.NoError(t, err)
 			}
-			_, err := svc.AddEvent(context.Background(), admin, d.ID, EventInput{Status: tc.next, Note: ptr("x")})
+			_, err := svc.AddEvent(context.Background(), owner, d.ID, EventInput{Status: tc.next, Note: ptr("x")})
 			assert.ErrorIs(t, err, apperr.ErrConflict)
 		})
 	}
@@ -103,7 +106,7 @@ func TestAddEvent_Validation(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := svc.AddEvent(context.Background(), admin, d.ID, tc.in)
+			_, err := svc.AddEvent(context.Background(), owner, d.ID, tc.in)
 			var verr *apperr.ValidationError
 			require.ErrorAs(t, err, &verr)
 			assert.Contains(t, verr.Fields, tc.field)
@@ -116,7 +119,7 @@ func TestEvents_DriverOnlySeesOwnDeliveries(t *testing.T) {
 	svc := NewService(fs)
 	ctx := context.Background()
 	mine := newAssigned(t, svc)
-	unassigned, err := svc.Create(ctx, admin.UserID, validInput())
+	unassigned, err := svc.Create(ctx, owner, validInput())
 	require.NoError(t, err)
 
 	for _, id := range []int64{mine.ID, unassigned.ID, 999} {
@@ -128,10 +131,10 @@ func TestEvents_DriverOnlySeesOwnDeliveries(t *testing.T) {
 	assert.Equal(t, StatusPending, fs.deliveries[mine.ID].Status)
 
 	_, err = svc.AddEvent(ctx, driverA, unassigned.ID, EventInput{Status: StatusPickedUp})
-	assert.ErrorIs(t, err, apperr.ErrNotFound, "unassigned deliveries are admin only")
+	assert.ErrorIs(t, err, apperr.ErrNotFound, "unassigned deliveries are the carrier's only")
 
-	_, err = svc.AddEvent(ctx, admin, unassigned.ID, EventInput{Status: StatusPickedUp})
-	assert.NoError(t, err, "admins reach every delivery")
+	_, err = svc.AddEvent(ctx, owner, unassigned.ID, EventInput{Status: StatusPickedUp})
+	assert.NoError(t, err, "the carrier reaches every delivery of its own")
 }
 
 func TestListForDriver_FiltersByCaller(t *testing.T) {
@@ -163,6 +166,7 @@ func TestTrack_HidesPersonalData(t *testing.T) {
 	tr, err := svc.Track(context.Background(), " "+strings.ToLower(d.TrackingCode)+" ")
 	require.NoError(t, err, "codes are case-insensitive and trimmed")
 	assert.Equal(t, "Maria", tr.RecipientFirstName)
+	assert.Equal(t, "Transportadora 1", tr.CarrierName)
 	assert.Equal(t, StatusPickedUp, tr.Status)
 	require.Len(t, tr.Events, 2)
 
@@ -187,7 +191,7 @@ func TestTrack_ExpiresThirtyDaysAfterCompletion(t *testing.T) {
 	svc.now = func() time.Time { return start }
 	d := newAssigned(t, svc)
 	for _, st := range []string{StatusPickedUp, StatusInTransit} {
-		_, err := svc.AddEvent(context.Background(), admin, d.ID, EventInput{Status: st})
+		_, err := svc.AddEvent(context.Background(), owner, d.ID, EventInput{Status: st})
 		require.NoError(t, err)
 	}
 
@@ -196,7 +200,7 @@ func TestTrack_ExpiresThirtyDaysAfterCompletion(t *testing.T) {
 	assert.NoError(t, err, "an open delivery never expires")
 
 	svc.now = func() time.Time { return start }
-	_, err = svc.AddEvent(context.Background(), admin, d.ID, EventInput{Status: StatusDelivered})
+	_, err = svc.AddEvent(context.Background(), owner, d.ID, EventInput{Status: StatusDelivered})
 	require.NoError(t, err)
 
 	svc.now = func() time.Time { return start.Add(trackingTTL - time.Minute) }

@@ -35,6 +35,8 @@ type Store interface {
 	GetDelivery(ctx context.Context, id int64) (store.Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (store.Delivery, error)
 	ListDeliveries(ctx context.Context, arg store.ListDeliveriesParams) ([]store.Delivery, error)
+	CountDeliveriesByStatus(ctx context.Context, arg store.CountDeliveriesByStatusParams) ([]store.CountDeliveriesByStatusRow, error)
+	CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error)
 	ListDriverDeliveries(ctx context.Context, arg store.ListDriverDeliveriesParams) ([]store.Delivery, error)
 	UpdateDelivery(ctx context.Context, arg store.UpdateDeliveryParams) (store.Delivery, error)
 	SetDeliveryStatus(ctx context.Context, arg store.SetDeliveryStatusParams) (store.Delivery, error)
@@ -45,6 +47,7 @@ type Store interface {
 	GetIdempotencyKey(ctx context.Context, arg store.GetIdempotencyKeyParams) (store.IdempotencyKey, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg store.SetIdempotencyKeyDeliveryParams) error
 	GetUserByID(ctx context.Context, id int64) (store.User, error)
+	GetCarrier(ctx context.Context, id int64) (store.Carrier, error)
 	// InTx runs fn in a database transaction, passing a Store bound to it.
 	InTx(ctx context.Context, fn func(Store) error) error
 }
@@ -63,6 +66,9 @@ type Delivery struct {
 	// AnonymizedAt is set when the recipient's data was erased (see
 	// internal/retention); such a delivery can no longer change.
 	AnonymizedAt *time.Time `json:"anonymized_at"`
+	// CarrierID is the carrier that owns the delivery; callers only ever
+	// see their own carrier's deliveries, so it is not sent.
+	CarrierID int64 `json:"-"`
 }
 
 func fromStore(d store.Delivery) Delivery {
@@ -102,23 +108,24 @@ func NewService(s Store) *Service {
 	return &Service{store: s, newCode: NewTrackingCode, now: time.Now}
 }
 
-// Create adds a delivery and its first "pending" event, recorded as made by actorID.
-func (s *Service) Create(ctx context.Context, actorID int64, in CreateInput) (Delivery, error) {
-	if err := s.validateCreate(ctx, &in); err != nil {
+// Create adds a delivery to the actor's carrier, with its first "pending"
+// event recorded as made by the actor.
+func (s *Service) Create(ctx context.Context, actor auth.Claims, in CreateInput) (Delivery, error) {
+	if err := s.validateCreate(ctx, actor.CarrierID, &in); err != nil {
 		return Delivery{}, err
 	}
 	var out Delivery
 	err := s.retryOnCodeCollision(ctx, func(q Store) (err error) {
-		out, err = s.insert(ctx, q, actorID, in)
+		out, err = s.insert(ctx, q, actor, in)
 		return err
 	})
 	if err == nil {
-		s.announce(ctx, out.ID, out.TrackingCode, out.Status, false)
+		s.announce(ctx, out.CarrierID, out.ID, out.TrackingCode, out.Status, false)
 	}
 	return out, err
 }
 
-func (s *Service) validateCreate(ctx context.Context, in *CreateInput) error {
+func (s *Service) validateCreate(ctx context.Context, carrierID int64, in *CreateInput) error {
 	in.RecipientName = strings.TrimSpace(in.RecipientName)
 	in.RecipientEmail = strings.ToLower(strings.TrimSpace(in.RecipientEmail))
 	in.Address = strings.TrimSpace(in.Address)
@@ -129,7 +136,7 @@ func (s *Service) validateCreate(ctx context.Context, in *CreateInput) error {
 	v.Check(in.Address != "", "address", "is required")
 	checkLengths(v, &in.RecipientName, &in.RecipientEmail, &in.Address)
 	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
+		v.Check(s.isDriver(ctx, carrierID, *in.DriverID), "driver_id", "must be an existing driver")
 	}
 	return v.Err()
 }
@@ -149,12 +156,13 @@ func (s *Service) retryOnCodeCollision(ctx context.Context, fn func(q Store) err
 	return errors.New("could not generate a unique tracking code")
 }
 
-func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateInput) (Delivery, error) {
+func (s *Service) insert(ctx context.Context, q Store, actor auth.Claims, in CreateInput) (Delivery, error) {
 	code, err := s.newCode()
 	if err != nil {
 		return Delivery{}, err
 	}
 	d, err := q.CreateDelivery(ctx, store.CreateDeliveryParams{
+		CarrierID:      actor.CarrierID,
 		TrackingCode:   code,
 		RecipientName:  in.RecipientName,
 		RecipientEmail: in.RecipientEmail,
@@ -165,7 +173,7 @@ func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateI
 		return Delivery{}, err
 	}
 	_, err = q.CreateDeliveryEvent(ctx, store.CreateDeliveryEventParams{
-		DeliveryID: d.ID, Status: d.Status, CreatedBy: &actorID,
+		DeliveryID: d.ID, Status: d.Status, CreatedBy: &actor.UserID,
 	})
 	if err != nil {
 		return Delivery{}, err
@@ -173,21 +181,23 @@ func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateI
 	return fromStore(d), nil
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (Delivery, error) {
-	d, err := s.store.GetDelivery(ctx, id)
+// Get returns a delivery of the actor's carrier; any other is not found.
+func (s *Service) Get(ctx context.Context, actor auth.Claims, id int64) (Delivery, error) {
+	d, err := s.visible(ctx, actor, id)
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	return fromStore(d), nil
 }
 
-func (s *Service) List(ctx context.Context, in ListInput) ([]Delivery, error) {
+// List lists the carrier's deliveries; the filter is part of the query.
+func (s *Service) List(ctx context.Context, carrierID int64, in ListInput) ([]Delivery, error) {
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
 	limit, offset := in.page()
 	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
-		Status: in.Status, Limit: limit, Offset: offset,
+		CarrierID: carrierID, Status: in.Status, Limit: limit, Offset: offset,
 	})
 	return fromStoreList(rows), err
 }
@@ -238,7 +248,7 @@ func fromStoreList(rows []store.Delivery) []Delivery {
 	return out
 }
 
-func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Delivery, error) {
+func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in UpdateInput) (Delivery, error) {
 	v := apperr.Validator{}
 	if in.RecipientName != nil {
 		*in.RecipientName = strings.TrimSpace(*in.RecipientName)
@@ -254,14 +264,14 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 	}
 	checkLengths(v, in.RecipientName, in.RecipientEmail, in.Address)
 	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
+		v.Check(s.isDriver(ctx, actor.CarrierID, *in.DriverID), "driver_id", "must be an existing driver")
 	}
 	if err := v.Err(); err != nil {
 		return Delivery{}, err
 	}
-	cur, err := s.store.GetDelivery(ctx, id)
+	cur, err := s.visible(ctx, actor, id)
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	if cur.AnonymizedAt != nil {
 		return Delivery{}, errAnonymized
@@ -278,7 +288,7 @@ func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Deliver
 		return Delivery{}, notFound(err)
 	}
 	// The public page shows the recipient's first name, so it reloads too.
-	s.announce(ctx, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
+	s.announce(ctx, d.CarrierID, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
 	return fromStore(d), nil
 }
 
@@ -301,9 +311,11 @@ func checkLengths(v apperr.Validator, name, email, address *string) {
 	}
 }
 
-func (s *Service) isDriver(ctx context.Context, id int64) bool {
+// isDriver tells whether id is a driver of the carrier; another carrier's
+// driver gets the same answer as a missing one.
+func (s *Service) isDriver(ctx context.Context, carrierID, id int64) bool {
 	u, err := s.store.GetUserByID(ctx, id)
-	return err == nil && u.Role == auth.RoleDriver
+	return err == nil && u.Role == auth.RoleDriver && u.CarrierID == carrierID
 }
 
 // Tracking codes skip 0/O and 1/I so they are easy to read over the phone.
