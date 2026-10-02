@@ -112,3 +112,9 @@ func (h *LiveHandler) Panel(w http.ResponseWriter, r *http.Request) {
 		return PanelTopic(c.CarrierID), exp, nil
 	})
 }
+
+// Announce tells the carrier's panel that a delivery changed outside this
+// service, such as a driver taking it into a route.
+func (s *Service) Announce(ctx context.Context, d Delivery) {
+	s.announce(ctx, d.CarrierID, d.ID, d.TrackingCode, d.Status, false)
+}

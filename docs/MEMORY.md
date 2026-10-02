@@ -4,13 +4,22 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 6.5 (produto com várias transportadoras) concluída. Próximo: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6.6 (endereço e rota do motorista) em andamento. Depois: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — Endereço em colunas (CEP, rua, número...) e `address` montado pela API.** *O CEP preenche o resto, a rota agrupa pelo endereço e a etiqueta sai certa; `address` continua como a linha inteira para quem só quer ler, e entregas antigas ficam só com ela.* (JSON numa coluna, que o sqlc e as queries tratam pior; tabela de endereços, sem reuso que justifique)
+- **2026-10-02 — Coordenadas vêm do front, não de geocodificação na API.** *O formulário mostra o pino no mapa e a transportadora arrasta se cair errado; a API não chama serviço externo e os testes não dependem de rede.* (Nominatim na API ao criar, que exige fila para respeitar 1 req/s e não deixa corrigir)
+- **2026-10-02 — Mudar o endereço sem mandar coordenadas apaga as antigas.** *Um pino velho num endereço novo leva o motorista ao lugar errado; sem pino a parada vai para o fim da rota.*
+- **2026-10-02 — Rota é do motorista e do dia (fuso de São Paulo), montada ao bipar.** *É o fluxo de quem carrega o carro na base; amanhã começa vazia.* (rota montada pela transportadora, que exige tela de despacho)
+- **2026-10-02 — Bipar pacote sem motorista atribui ao motorista que bipou.** *Na base o motorista pega os pacotes da pilha; esperar a transportadora atribuir travaria a saída. De outro motorista dá 409, de outra transportadora 404.*
+- **2026-10-02 — Parada = mesmo CEP, rua e número, sem olhar o complemento.** *Apartamentos de um prédio são uma parada só; entregas antigas agrupam pelo texto do endereço.*
+- **2026-10-02 — Ordem sugerida por vizinho mais próximo + 2-opt em linha reta, no Go.** *Para 30 a 50 paradas fica perto do ótimo em microssegundos, sem serviço de rotas pago nem OSRM para hospedar.* (OSRM, Google/Mapbox: custo ou mais um serviço)
+- **2026-10-02 — A ordem é guardada por pacote; as paradas são calculadas na leitura.** *Pacotes da mesma parada ficam juntos no lugar do primeiro, então reordenar paradas é só mandar os ids na nova ordem.*
 
 - **2026-10-02 — Várias transportadoras, cada uma um tenant, com `carrier_id` em usuários e entregas.** *O "admin" único não fazia sentido como produto; com o tenant, uma transportadora se cadastra e começa a usar sozinha.* (banco ou schema por transportadora, pesado demais para o tamanho do projeto; Row Level Security do Postgres, que esconde a regra fora do código e complica os testes)
 - **2026-10-02 — `carrier_id` no token (`cid`) e filtro no service, não em middleware.** *O token já diz quem é e de onde; os services recebem o `auth.Claims` e cada query filtra ou confere a transportadora, o que os testes de IDOR cobrem.* (buscar a transportadora no banco a cada requisição)

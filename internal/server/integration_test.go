@@ -19,6 +19,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/testdb"
 	"github.com/Victor-Novakoski/rastreia/internal/testredis"
@@ -65,6 +66,7 @@ func newInstance(t *testing.T, pool *pgxpool.Pool, tokens *auth.Tokens, opts Opt
 		Auth:       authHandler,
 		Users:      user.NewHandler(user.NewService(q), authHandler),
 		Deliveries: delivery.NewHandler(deliveries),
+		Routes:     route.NewHandler(route.NewService(route.NewPGStore(pool), deliveries)),
 		Live:       delivery.NewLiveHandler(deliveries, live, tokens),
 		Ready:      func(r *http.Request) error { return pool.Ping(r.Context()) },
 		Options:    opts,
@@ -141,7 +143,7 @@ func (a *testAPI) driverID(name string) int64 {
 func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 	a := newAPI(t, Options{})
 	var d delivery.Delivery
-	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`, a.driverID("Ana"))
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`,"driver_id":%d}`, a.driverID("Ana"))
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 	path := fmt.Sprintf("/deliveries/%d", d.ID)
 
@@ -170,7 +172,7 @@ func TestIntegration_PublicTracking(t *testing.T) {
 	a := newAPI(t, Options{TrackingRateLimit: 5})
 	var d delivery.Delivery
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner,
-		`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10"}`, &d))
+		`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`}`, &d))
 
 	req := httptest.NewRequest(http.MethodGet, "/public/tracking/"+d.TrackingCode, nil)
 	req.RemoteAddr = "203.0.113.7:1234"
@@ -192,7 +194,7 @@ func TestIntegration_PublicTracking(t *testing.T) {
 
 func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	a := newAPI(t, Options{})
-	body := `{"recipient_name":"Maria","recipient_email":"maria@example.com","address":"Rua A, 10"}`
+	body := `{"recipient_name":"Maria","recipient_email":"maria@example.com",` + addressJSON + `}`
 	post := func(key, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/deliveries", strings.NewReader(body))
 		req.RemoteAddr = "203.0.113.7:1234"
@@ -212,7 +214,7 @@ func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	assert.Equal(t, "true", retry.Header().Get("Idempotent-Replayed"))
 	assert.JSONEq(t, first.Body.String(), retry.Body.String())
 
-	other := post("abc-123", strings.Replace(body, "Rua A", "Rua B", 1))
+	other := post("abc-123", strings.Replace(body, `"number":"10"`, `"number":"20"`, 1))
 	assert.Equal(t, http.StatusUnprocessableEntity, other.Code)
 
 	var list []delivery.Delivery
@@ -282,7 +284,7 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 	read := func(c *websocket.Conn) (string, error) { return readWS(t, c) }
 
 	var d delivery.Delivery
-	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`,"driver_id":%d}`,
 		a.driverID("Ana"))
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 
@@ -323,7 +325,7 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 func TestIntegration_CarriersAreIsolated(t *testing.T) {
 	a := newAPI(t, Options{})
 	var d delivery.Delivery
-	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`, a.driverID("Ana"))
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`,"driver_id":%d}`, a.driverID("Ana"))
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 	path := fmt.Sprintf("/deliveries/%d", d.ID)
 
@@ -334,7 +336,7 @@ func TestIntegration_CarriersAreIsolated(t *testing.T) {
 	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/drivers", a.rival, "", &drivers))
 	assert.Empty(t, drivers)
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path, a.rival, "", nil))
-	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPatch, path, a.rival, `{"address":"Rua B"}`, nil))
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPatch, path, a.rival, `{"number":"20"}`, nil))
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path+"/events", a.rival, "", nil))
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPost, path+"/events", a.rival, `{"status":"picked_up"}`, nil))
 	assert.Equal(t, http.StatusUnprocessableEntity, a.do(http.MethodPost, "/deliveries", a.rival, body, nil),
@@ -421,7 +423,7 @@ func TestIntegration_InstancesShareRedis(t *testing.T) {
 	t.Cleanup(srvB.Close)
 
 	var d delivery.Delivery
-	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com","address":"Rua A, 10","driver_id":%d}`,
+	body := fmt.Sprintf(`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`,"driver_id":%d}`,
 		a.driverID("Ana"))
 	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner, body, &d))
 
@@ -457,3 +459,34 @@ func TestIntegration_InstancesShareRedis(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
 	assert.Contains(t, rec.Body.String(), "failed attempts", "an e-mail locked on A is locked on B")
 }
+
+// The route is the driver's own: carriers have none, and each driver only
+// reaches packages of their carrier.
+func TestIntegration_Route(t *testing.T) {
+	a := newAPI(t, Options{})
+	var d delivery.Delivery
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner,
+		`{"recipient_name":"Maria Souza","recipient_email":"maria@example.com",`+addressJSON+`}`, &d))
+
+	var r route.Route
+	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, "/me/route", a.owner, "", nil))
+	assert.Equal(t, http.StatusUnauthorized, a.do(http.MethodGet, "/me/route", "", "", nil))
+
+	require.Equal(t, http.StatusOK, a.do(http.MethodPost, "/me/route/deliveries", a.driverA, `{"code":"`+d.TrackingCode+`"}`, &r))
+	require.Len(t, r.Stops, 1)
+	assert.Equal(t, 1, r.Stops[0].Packages[0].Number)
+	assert.Equal(t, http.StatusConflict, a.do(http.MethodPost, "/me/route/deliveries", a.driverB, `{"code":"`+d.TrackingCode+`"}`, nil),
+		"the first driver to scan takes the package")
+
+	assert.Equal(t, http.StatusOK, a.do(http.MethodPost, "/me/route/optimize", a.driverA, `{"latitude":-23.5,"longitude":-46.6}`, &r))
+	assert.Equal(t, http.StatusUnprocessableEntity, a.do(http.MethodPost, "/me/route/optimize", a.driverA, `{"latitude":-23.5}`, nil))
+	assert.Equal(t, http.StatusOK, a.do(http.MethodPut, "/me/route/order", a.driverA, fmt.Sprintf(`{"delivery_ids":[%d]}`, d.ID), &r))
+	assert.Equal(t, http.StatusUnprocessableEntity, a.do(http.MethodPut, "/me/route/order", a.driverA, `{"delivery_ids":[]}`, nil))
+	assert.Equal(t, http.StatusOK, a.do(http.MethodDelete, fmt.Sprintf("/me/route/deliveries/%d", d.ID), a.driverA, "", &r))
+	assert.Empty(t, r.Stops)
+	assert.Equal(t, http.StatusOK, a.do(http.MethodGet, "/me/route", a.driverB, "", &r))
+	assert.Empty(t, r.Stops)
+}
+
+const addressJSON = `"recipient_phone":"11987654321","postal_code":"01001000","street":"Praça da Sé","number":"10",` +
+	`"district":"Sé","city":"São Paulo","state":"SP"`

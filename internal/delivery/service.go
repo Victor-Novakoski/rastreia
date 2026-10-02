@@ -69,26 +69,103 @@ type Delivery struct {
 	// CarrierID is the carrier that owns the delivery; callers only ever
 	// see their own carrier's deliveries, so it is not sent.
 	CarrierID int64 `json:"-"`
+	// RecipientPhone and the address parts are empty for deliveries
+	// created before the address was split; those only have Address.
+	RecipientPhone   string   `json:"recipient_phone"`
+	PostalCode       string   `json:"postal_code"`
+	Street           string   `json:"street"`
+	Number           string   `json:"number"`
+	Complement       string   `json:"complement"`
+	District         string   `json:"district"`
+	City             string   `json:"city"`
+	State            string   `json:"state"`
+	AddressReference string   `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
 }
 
 func fromStore(d store.Delivery) Delivery {
 	return Delivery(d)
 }
 
+// CreateInput is the recipient and the address in parts; the one-line
+// address is built from them. Latitude and longitude are optional (the
+// carrier's form places the address on a map) and go together.
 type CreateInput struct {
-	RecipientName  string `json:"recipient_name"`
-	RecipientEmail string `json:"recipient_email"`
-	Address        string `json:"address"`
-	DriverID       *int64 `json:"driver_id"`
+	RecipientName    string   `json:"recipient_name"`
+	RecipientEmail   string   `json:"recipient_email"`
+	RecipientPhone   string   `json:"recipient_phone"`
+	PostalCode       string   `json:"postal_code"`
+	Street           string   `json:"street"`
+	Number           string   `json:"number"`
+	Complement       string   `json:"complement"`
+	District         string   `json:"district"`
+	City             string   `json:"city"`
+	State            string   `json:"state"`
+	AddressReference string   `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
+	DriverID         *int64   `json:"driver_id"`
 }
 
-// UpdateInput only changes the fields that are sent. The status is not
-// editable here: it changes through delivery events.
+func (in CreateInput) recipient() recipient {
+	return recipient{
+		Name: in.RecipientName, Email: in.RecipientEmail, Phone: in.RecipientPhone,
+		PostalCode: in.PostalCode, Street: in.Street, Number: in.Number, Complement: in.Complement,
+		District: in.District, City: in.City, State: in.State, Reference: in.AddressReference,
+		Latitude: in.Latitude, Longitude: in.Longitude,
+	}
+}
+
+// UpdateInput only changes the fields that are sent. Changing any part of
+// the address checks the whole address again, and the map position is
+// dropped unless new coordinates come with it. The status is not editable
+// here: it changes through delivery events.
 type UpdateInput struct {
-	RecipientName  *string `json:"recipient_name"`
-	RecipientEmail *string `json:"recipient_email"`
-	Address        *string `json:"address"`
-	DriverID       *int64  `json:"driver_id"`
+	RecipientName    *string  `json:"recipient_name"`
+	RecipientEmail   *string  `json:"recipient_email"`
+	RecipientPhone   *string  `json:"recipient_phone"`
+	PostalCode       *string  `json:"postal_code"`
+	Street           *string  `json:"street"`
+	Number           *string  `json:"number"`
+	Complement       *string  `json:"complement"`
+	District         *string  `json:"district"`
+	City             *string  `json:"city"`
+	State            *string  `json:"state"`
+	AddressReference *string  `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
+	DriverID         *int64   `json:"driver_id"`
+}
+
+// apply merges the sent fields into r and tells whether the address changed.
+func (in UpdateInput) apply(r *recipient) (addressChanged bool) {
+	set := func(dst *string, src *string) bool {
+		if src != nil {
+			*dst = *src
+		}
+		return src != nil
+	}
+	set(&r.Name, in.RecipientName)
+	set(&r.Email, in.RecipientEmail)
+	set(&r.Phone, in.RecipientPhone)
+	for _, f := range []struct {
+		dst *string
+		src *string
+	}{
+		{&r.PostalCode, in.PostalCode}, {&r.Street, in.Street}, {&r.Number, in.Number},
+		{&r.Complement, in.Complement}, {&r.District, in.District}, {&r.City, in.City},
+		{&r.State, in.State}, {&r.Reference, in.AddressReference},
+	} {
+		addressChanged = set(f.dst, f.src) || addressChanged
+	}
+	if in.Latitude != nil || in.Longitude != nil {
+		r.Latitude, r.Longitude = in.Latitude, in.Longitude
+		addressChanged = true
+	} else if addressChanged {
+		r.Latitude, r.Longitude = nil, nil
+	}
+	return addressChanged
 }
 
 type ListInput struct {
@@ -111,12 +188,13 @@ func NewService(s Store) *Service {
 // Create adds a delivery to the actor's carrier, with its first "pending"
 // event recorded as made by the actor.
 func (s *Service) Create(ctx context.Context, actor auth.Claims, in CreateInput) (Delivery, error) {
-	if err := s.validateCreate(ctx, actor.CarrierID, &in); err != nil {
+	rec, err := s.validateCreate(ctx, actor.CarrierID, in)
+	if err != nil {
 		return Delivery{}, err
 	}
 	var out Delivery
-	err := s.retryOnCodeCollision(ctx, func(q Store) (err error) {
-		out, err = s.insert(ctx, q, actor, in)
+	err = s.retryOnCodeCollision(ctx, func(q Store) (err error) {
+		out, err = s.insert(ctx, q, actor, rec, in.DriverID)
 		return err
 	})
 	if err == nil {
@@ -125,20 +203,17 @@ func (s *Service) Create(ctx context.Context, actor auth.Claims, in CreateInput)
 	return out, err
 }
 
-func (s *Service) validateCreate(ctx context.Context, carrierID int64, in *CreateInput) error {
-	in.RecipientName = strings.TrimSpace(in.RecipientName)
-	in.RecipientEmail = strings.ToLower(strings.TrimSpace(in.RecipientEmail))
-	in.Address = strings.TrimSpace(in.Address)
-
+func (s *Service) validateCreate(ctx context.Context, carrierID int64, in CreateInput) (recipient, error) {
+	rec := in.recipient()
+	rec.normalize()
 	v := apperr.Validator{}
-	v.Check(in.RecipientName != "", "recipient_name", "is required")
-	v.Check(validEmail(in.RecipientEmail), "recipient_email", "must be a valid e-mail")
-	v.Check(in.Address != "", "address", "is required")
-	checkLengths(v, &in.RecipientName, &in.RecipientEmail, &in.Address)
+	rec.validateContact(v)
+	rec.validatePhone(v)
+	rec.validateAddress(v)
 	if in.DriverID != nil {
 		v.Check(s.isDriver(ctx, carrierID, *in.DriverID), "driver_id", "must be an existing driver")
 	}
-	return v.Err()
+	return rec, v.Err()
 }
 
 // retryOnCodeCollision runs fn in a transaction, starting over with a new
@@ -156,18 +231,29 @@ func (s *Service) retryOnCodeCollision(ctx context.Context, fn func(q Store) err
 	return errors.New("could not generate a unique tracking code")
 }
 
-func (s *Service) insert(ctx context.Context, q Store, actor auth.Claims, in CreateInput) (Delivery, error) {
+func (s *Service) insert(ctx context.Context, q Store, actor auth.Claims, r recipient, driverID *int64) (Delivery, error) {
 	code, err := s.newCode()
 	if err != nil {
 		return Delivery{}, err
 	}
 	d, err := q.CreateDelivery(ctx, store.CreateDeliveryParams{
-		CarrierID:      actor.CarrierID,
-		TrackingCode:   code,
-		RecipientName:  in.RecipientName,
-		RecipientEmail: in.RecipientEmail,
-		Address:        in.Address,
-		DriverID:       in.DriverID,
+		CarrierID:        actor.CarrierID,
+		TrackingCode:     code,
+		RecipientName:    r.Name,
+		RecipientEmail:   r.Email,
+		RecipientPhone:   r.Phone,
+		Address:          r.fullAddress(),
+		PostalCode:       r.PostalCode,
+		Street:           r.Street,
+		Number:           r.Number,
+		Complement:       r.Complement,
+		District:         r.District,
+		City:             r.City,
+		State:            r.State,
+		AddressReference: r.Reference,
+		Latitude:         r.Latitude,
+		Longitude:        r.Longitude,
+		DriverID:         driverID,
 	})
 	if err != nil {
 		return Delivery{}, err
@@ -249,26 +335,6 @@ func fromStoreList(rows []store.Delivery) []Delivery {
 }
 
 func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in UpdateInput) (Delivery, error) {
-	v := apperr.Validator{}
-	if in.RecipientName != nil {
-		*in.RecipientName = strings.TrimSpace(*in.RecipientName)
-		v.Check(*in.RecipientName != "", "recipient_name", "cannot be empty")
-	}
-	if in.RecipientEmail != nil {
-		*in.RecipientEmail = strings.ToLower(strings.TrimSpace(*in.RecipientEmail))
-		v.Check(validEmail(*in.RecipientEmail), "recipient_email", "must be a valid e-mail")
-	}
-	if in.Address != nil {
-		*in.Address = strings.TrimSpace(*in.Address)
-		v.Check(*in.Address != "", "address", "cannot be empty")
-	}
-	checkLengths(v, in.RecipientName, in.RecipientEmail, in.Address)
-	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, actor.CarrierID, *in.DriverID), "driver_id", "must be an existing driver")
-	}
-	if err := v.Err(); err != nil {
-		return Delivery{}, err
-	}
 	cur, err := s.visible(ctx, actor, id)
 	if err != nil {
 		return Delivery{}, err
@@ -276,13 +342,46 @@ func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in Up
 	if cur.AnonymizedAt != nil {
 		return Delivery{}, errAnonymized
 	}
+	rec := recipientOf(cur)
+	addressChanged := in.apply(&rec)
+	rec.normalize()
+
+	v := apperr.Validator{}
+	rec.validateContact(v)
+	if in.RecipientPhone != nil {
+		rec.validatePhone(v)
+	}
+	if addressChanged {
+		rec.validateAddress(v)
+	}
+	if in.DriverID != nil {
+		v.Check(s.isDriver(ctx, actor.CarrierID, *in.DriverID), "driver_id", "must be an existing driver")
+	}
+	if err := v.Err(); err != nil {
+		return Delivery{}, err
+	}
+	address := cur.Address
+	if addressChanged {
+		address = rec.fullAddress()
+	}
 
 	d, err := s.store.UpdateDelivery(ctx, store.UpdateDeliveryParams{
-		ID:             id,
-		RecipientName:  in.RecipientName,
-		RecipientEmail: in.RecipientEmail,
-		Address:        in.Address,
-		DriverID:       in.DriverID,
+		ID:               id,
+		RecipientName:    rec.Name,
+		RecipientEmail:   rec.Email,
+		RecipientPhone:   rec.Phone,
+		Address:          address,
+		PostalCode:       rec.PostalCode,
+		Street:           rec.Street,
+		Number:           rec.Number,
+		Complement:       rec.Complement,
+		District:         rec.District,
+		City:             rec.City,
+		State:            rec.State,
+		AddressReference: rec.Reference,
+		Latitude:         rec.Latitude,
+		Longitude:        rec.Longitude,
+		DriverID:         in.DriverID,
 	})
 	if err != nil {
 		return Delivery{}, notFound(err)
@@ -292,22 +391,12 @@ func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in Up
 	return fromStore(d), nil
 }
 
-const (
-	maxName    = 120
-	maxEmail   = 254
-	maxAddress = 300
-)
-
-// checkLengths caps free-text fields; nil means the field was not sent.
-func checkLengths(v apperr.Validator, name, email, address *string) {
-	if name != nil {
-		v.Check(len(*name) <= maxName, "recipient_name", "must have at most 120 characters")
-	}
-	if email != nil {
-		v.Check(len(*email) <= maxEmail, "recipient_email", "must be a valid e-mail")
-	}
-	if address != nil {
-		v.Check(len(*address) <= maxAddress, "address", "must have at most 300 characters")
+func recipientOf(d store.Delivery) recipient {
+	return recipient{
+		Name: d.RecipientName, Email: d.RecipientEmail, Phone: d.RecipientPhone,
+		PostalCode: d.PostalCode, Street: d.Street, Number: d.Number, Complement: d.Complement,
+		District: d.District, City: d.City, State: d.State, Reference: d.AddressReference,
+		Latitude: d.Latitude, Longitude: d.Longitude,
 	}
 }
 

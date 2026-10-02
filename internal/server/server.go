@@ -15,6 +15,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
 	"github.com/Victor-Novakoski/rastreia/internal/push"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
 
@@ -23,6 +24,7 @@ type Deps struct {
 	Auth       *auth.Handler
 	Users      *user.Handler
 	Deliveries *delivery.Handler
+	Routes     *route.Handler
 	// Live serves the WebSocket routes; nil leaves them out.
 	Live *delivery.LiveHandler
 	// Push serves the Web Push routes; nil (no VAPID key) leaves them out.
@@ -133,6 +135,11 @@ func New(d Deps) http.Handler {
 			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleDriver))
 
 			r.Get("/me/deliveries", d.Deliveries.ListMine)
+			r.Get("/me/route", d.Routes.Today)
+			r.Post("/me/route/deliveries", d.Routes.Add)
+			r.Delete("/me/route/deliveries/{id}", d.Routes.Remove)
+			r.Put("/me/route/order", d.Routes.Reorder)
+			r.Post("/me/route/optimize", d.Routes.Optimize)
 		})
 	})
 

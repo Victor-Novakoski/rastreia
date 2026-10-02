@@ -36,10 +36,14 @@ func do(t *testing.T, h http.Handler, method, path, body string) *httptest.Respo
 	return rec
 }
 
+const createBody = `{"recipient_name":"Maria","recipient_email":"maria@example.com","recipient_phone":"(11) 98765-4321",
+	"postal_code":"01001-000","street":"Praça da Sé","number":"10","district":"Sé","city":"São Paulo","state":"SP",
+	"latitude":-23.55,"longitude":-46.63}`
+
 func TestHandler_CreateGetUpdate(t *testing.T) {
 	r := newTestRouter()
 
-	rec := do(t, r, http.MethodPost, "/deliveries", `{"recipient_name":"Maria","recipient_email":"maria@example.com","address":"Rua A, 10"}`)
+	rec := do(t, r, http.MethodPost, "/deliveries", createBody)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var created Delivery
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&created))
@@ -48,9 +52,9 @@ func TestHandler_CreateGetUpdate(t *testing.T) {
 	rec = do(t, r, http.MethodGet, "/deliveries/1", "")
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	rec = do(t, r, http.MethodPatch, "/deliveries/1", `{"address":"Rua B, 20"}`)
+	rec = do(t, r, http.MethodPatch, "/deliveries/1", `{"number":"20"}`)
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"address":"Rua B, 20"`)
+	assert.Contains(t, rec.Body.String(), `"address":"Praça da Sé, 20 - Sé, São Paulo - SP, 01001-000"`)
 
 	rec = do(t, r, http.MethodGet, "/deliveries?status=pending", "")
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -63,7 +67,8 @@ func TestHandler_Errors(t *testing.T) {
 		name, method, path, body string
 		want                     int
 	}{
-		{"invalid input", http.MethodPost, "/deliveries", `{"recipient_name":"","recipient_email":"x","address":""}`, http.StatusUnprocessableEntity},
+		{"invalid input", http.MethodPost, "/deliveries", `{"recipient_name":"","recipient_email":"x","street":""}`, http.StatusUnprocessableEntity},
+		{"address is built from its parts", http.MethodPost, "/deliveries", `{"address":"Rua A, 10"}`, http.StatusBadRequest},
 		{"malformed json", http.MethodPost, "/deliveries", `{`, http.StatusBadRequest},
 		{"status is not editable", http.MethodPatch, "/deliveries/1", `{"status":"delivered"}`, http.StatusBadRequest},
 		{"bad id", http.MethodGet, "/deliveries/abc", "", http.StatusBadRequest},

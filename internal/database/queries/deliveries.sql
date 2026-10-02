@@ -1,6 +1,9 @@
 -- name: CreateDelivery :one
-INSERT INTO deliveries (carrier_id, tracking_code, recipient_name, recipient_email, address, driver_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO deliveries (
+    carrier_id, tracking_code, recipient_name, recipient_email, recipient_phone,
+    address, postal_code, street, number, complement, district, city, state,
+    address_reference, latitude, longitude, driver_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 RETURNING *;
 
 -- name: GetDelivery :one
@@ -13,13 +16,27 @@ WHERE carrier_id = sqlc.arg('carrier_id')
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
+-- UpdateDelivery writes every recipient and address field: the service
+-- merges the change into the current delivery first. The driver is only
+-- changed when sent.
 -- name: UpdateDelivery :one
 UPDATE deliveries SET
-    recipient_name  = coalesce(sqlc.narg('recipient_name'), recipient_name),
-    recipient_email = coalesce(sqlc.narg('recipient_email'), recipient_email),
-    address         = coalesce(sqlc.narg('address'), address),
-    driver_id       = coalesce(sqlc.narg('driver_id'), driver_id),
-    updated_at      = now()
+    recipient_name    = sqlc.arg('recipient_name'),
+    recipient_email   = sqlc.arg('recipient_email'),
+    recipient_phone   = sqlc.arg('recipient_phone'),
+    address           = sqlc.arg('address'),
+    postal_code       = sqlc.arg('postal_code'),
+    street            = sqlc.arg('street'),
+    number            = sqlc.arg('number'),
+    complement        = sqlc.arg('complement'),
+    district          = sqlc.arg('district'),
+    city              = sqlc.arg('city'),
+    state             = sqlc.arg('state'),
+    address_reference = sqlc.arg('address_reference'),
+    latitude          = sqlc.narg('latitude'),
+    longitude         = sqlc.narg('longitude'),
+    driver_id         = coalesce(sqlc.narg('driver_id'), driver_id),
+    updated_at        = now()
 WHERE id = sqlc.arg('id')
 RETURNING *;
 

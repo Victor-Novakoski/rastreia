@@ -14,6 +14,7 @@ import (
 
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
@@ -32,6 +33,7 @@ func newTestServer(opts Options) http.Handler {
 		Auth:       authHandler,
 		Users:      user.NewHandler(user.NewService(nil), authHandler),
 		Deliveries: delivery.NewHandler(delivery.NewService(nil)),
+		Routes:     route.NewHandler(route.NewService(nil, nil)),
 		Ready:      func(*http.Request) error { return nil },
 		Options:    opts,
 	})

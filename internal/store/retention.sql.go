@@ -15,7 +15,16 @@ WITH d AS (
     UPDATE deliveries SET
         recipient_name  = 'Destinatário removido',
         recipient_email = '',
+        recipient_phone = '',
         address         = '',
+        postal_code     = '',
+        street          = '',
+        number          = '',
+        complement      = '',
+        district        = '',
+        address_reference = '',
+        latitude        = NULL,
+        longitude       = NULL,
         anonymized_at   = now(),
         updated_at      = now()
     WHERE anonymized_at IS NULL

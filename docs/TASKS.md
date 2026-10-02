@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 6.5 — Produto (várias transportadoras)**
+**Etapa atual: 6.6 — Endereço e rota do motorista**
 
 ## Etapa 1 — Base da API ✅
 
@@ -91,6 +91,18 @@ O "admin" vira a transportadora, e o projeto passa a funcionar como um produto q
 - [x] Página inicial com as três entradas (transportadora, motorista, rastreio)
 - [x] Cadastro e login da transportadora, login do motorista, cada um na sua tela
 - [x] Painel da transportadora com visão geral, primeiros passos e o nome da transportadora no cabeçalho
+
+## Etapa 6.6 — Endereço e rota do motorista
+
+Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem serviço pago.
+
+- [x] Endereço em partes, telefone do destinatário, ponto de referência e coordenadas na entrega (API)
+- [x] Retenção apaga também telefone, endereço em partes e coordenadas (#27)
+- [x] Rota do dia do motorista: bipar por código ou link do QR-code, pacote sem motorista passa a ser dele (#6)
+- [x] Paradas por endereço, numeração 1..N, ordem sugerida (vizinho mais próximo + 2-opt) e ordem livre
+- [ ] Formulário de entrega com CEP (ViaCEP) e pino no mapa (OpenStreetMap)
+- [ ] Etiqueta com QR-code para imprimir
+- [ ] Tela da rota no app do motorista: leitor de QR-code, mapa com as paradas, arrastar para reordenar
 
 ## Etapa 7 — Deploy na AWS
 

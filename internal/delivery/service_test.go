@@ -144,8 +144,11 @@ func (f *fakeStore) CreateDelivery(_ context.Context, arg store.CreateDeliveryPa
 	f.nextID++
 	d := store.Delivery{
 		ID: f.nextID, TrackingCode: arg.TrackingCode, RecipientName: arg.RecipientName,
-		RecipientEmail: arg.RecipientEmail, Address: arg.Address, DriverID: arg.DriverID, Status: StatusPending,
-		CarrierID: arg.CarrierID, CreatedAt: time.Now(),
+		RecipientEmail: arg.RecipientEmail, RecipientPhone: arg.RecipientPhone, Address: arg.Address,
+		PostalCode: arg.PostalCode, Street: arg.Street, Number: arg.Number, Complement: arg.Complement,
+		District: arg.District, City: arg.City, State: arg.State, AddressReference: arg.AddressReference,
+		Latitude: arg.Latitude, Longitude: arg.Longitude,
+		DriverID: arg.DriverID, Status: StatusPending, CarrierID: arg.CarrierID, CreatedAt: time.Now(),
 	}
 	f.deliveries[d.ID] = d
 	return d, nil
@@ -199,15 +202,10 @@ func (f *fakeStore) UpdateDelivery(_ context.Context, arg store.UpdateDeliveryPa
 	if !ok {
 		return store.Delivery{}, pgx.ErrNoRows
 	}
-	if arg.RecipientName != nil {
-		d.RecipientName = *arg.RecipientName
-	}
-	if arg.RecipientEmail != nil {
-		d.RecipientEmail = *arg.RecipientEmail
-	}
-	if arg.Address != nil {
-		d.Address = *arg.Address
-	}
+	d.RecipientName, d.RecipientEmail, d.RecipientPhone = arg.RecipientName, arg.RecipientEmail, arg.RecipientPhone
+	d.Address, d.PostalCode, d.Street, d.Number = arg.Address, arg.PostalCode, arg.Street, arg.Number
+	d.Complement, d.District, d.City, d.State = arg.Complement, arg.District, arg.City, arg.State
+	d.AddressReference, d.Latitude, d.Longitude = arg.AddressReference, arg.Latitude, arg.Longitude
 	if arg.DriverID != nil {
 		d.DriverID = arg.DriverID
 	}
@@ -232,7 +230,12 @@ func ptr[T any](v T) *T { return &v }
 const ownerID = 1
 
 func validInput() CreateInput {
-	return CreateInput{RecipientName: " Maria Souza ", RecipientEmail: "Maria@Example.com", Address: "Rua A, 10"}
+	return CreateInput{
+		RecipientName: " Maria Souza ", RecipientEmail: "Maria@Example.com", RecipientPhone: "(11) 98765-4321",
+		PostalCode: "01001-000", Street: "Praça da Sé", Number: "10", Complement: "Apto 2",
+		District: "Sé", City: "São Paulo", State: "sp", AddressReference: "Portão azul",
+		Latitude: ptr(-23.5503), Longitude: ptr(-46.6339),
+	}
 }
 
 func TestCreate(t *testing.T) {
@@ -243,6 +246,11 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, "Maria Souza", d.RecipientName)
 	assert.Equal(t, "maria@example.com", d.RecipientEmail)
 	assert.Equal(t, StatusPending, d.Status)
+	assert.Equal(t, "11987654321", d.RecipientPhone, "only the digits are kept")
+	assert.Equal(t, "01001000", d.PostalCode)
+	assert.Equal(t, "SP", d.State)
+	assert.Equal(t, "Praça da Sé, 10, Apto 2 - Sé, São Paulo - SP, 01001-000", d.Address)
+	assert.Equal(t, ptr(-23.5503), d.Latitude)
 	assert.Regexp(t, regexp.MustCompile(`^RS[A-Z2-9]{10}$`), d.TrackingCode)
 
 	events, err := svc.ListEvents(context.Background(), owner, d.ID)
@@ -261,12 +269,22 @@ func TestCreate_Validation(t *testing.T) {
 	}{
 		"empty name":             {func(in *CreateInput) { in.RecipientName = "  " }, "recipient_name"},
 		"bad e-mail":             {func(in *CreateInput) { in.RecipientEmail = "maria" }, "recipient_email"},
-		"empty address":          {func(in *CreateInput) { in.Address = "" }, "address"},
+		"short CEP":              {func(in *CreateInput) { in.PostalCode = "0100-100" }, "postal_code"},
+		"empty street":           {func(in *CreateInput) { in.Street = " " }, "street"},
+		"empty number":           {func(in *CreateInput) { in.Number = "" }, "number"},
+		"empty district":         {func(in *CreateInput) { in.District = "" }, "district"},
+		"empty city":             {func(in *CreateInput) { in.City = "" }, "city"},
+		"unknown state":          {func(in *CreateInput) { in.State = "XX" }, "state"},
+		"phone without DDD":      {func(in *CreateInput) { in.RecipientPhone = "98765-4321" }, "recipient_phone"},
+		"latitude alone":         {func(in *CreateInput) { in.Longitude = nil }, "latitude"},
+		"latitude out of range":  {func(in *CreateInput) { in.Latitude = ptr(91.0) }, "latitude"},
+		"longitude out of range": {func(in *CreateInput) { in.Longitude = ptr(-181.0) }, "longitude"},
+		"long street":            {func(in *CreateInput) { in.Street = strings.Repeat("a", 201) }, "street"},
+		"long reference":         {func(in *CreateInput) { in.AddressReference = strings.Repeat("a", 301) }, "address_reference"},
 		"unknown driver":         {func(in *CreateInput) { in.DriverID = ptr(int64(99)) }, "driver_id"},
 		"owner as driver":        {func(in *CreateInput) { in.DriverID = ptr(int64(1)) }, "driver_id"},
 		"other carrier's driver": {func(in *CreateInput) { in.DriverID = ptr(int64(5)) }, "driver_id"},
 		"long name":              {func(in *CreateInput) { in.RecipientName = strings.Repeat("a", 121) }, "recipient_name"},
-		"long address":           {func(in *CreateInput) { in.Address = strings.Repeat("a", 301) }, "address"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -307,7 +325,7 @@ func TestGetAndUpdate_NotFound(t *testing.T) {
 	_, err := svc.Get(context.Background(), owner, 404)
 	assert.ErrorIs(t, err, apperr.ErrNotFound)
 
-	_, err = svc.Update(context.Background(), owner, 404, UpdateInput{Address: ptr("Rua B")})
+	_, err = svc.Update(context.Background(), owner, 404, UpdateInput{Number: ptr("20")})
 	assert.ErrorIs(t, err, apperr.ErrNotFound)
 }
 
@@ -324,7 +342,7 @@ func TestCarrierIsolation(t *testing.T) {
 
 	_, err = svc.Get(ctx, rival, d.ID)
 	assert.ErrorIs(t, err, apperr.ErrNotFound)
-	_, err = svc.Update(ctx, rival, d.ID, UpdateInput{Address: ptr("Rua B")})
+	_, err = svc.Update(ctx, rival, d.ID, UpdateInput{Number: ptr("20")})
 	assert.ErrorIs(t, err, apperr.ErrNotFound)
 	_, err = svc.ListEvents(ctx, rival, d.ID)
 	assert.ErrorIs(t, err, apperr.ErrNotFound)
@@ -372,15 +390,41 @@ func TestUpdate(t *testing.T) {
 	created, err := svc.Create(context.Background(), owner, validInput())
 	require.NoError(t, err)
 
-	updated, err := svc.Update(context.Background(), owner, created.ID, UpdateInput{Address: ptr("  Rua B, 20 "), DriverID: ptr(int64(2))})
+	updated, err := svc.Update(context.Background(), owner, created.ID, UpdateInput{Number: ptr(" 20 "), DriverID: ptr(int64(2))})
 	require.NoError(t, err)
-	assert.Equal(t, "Rua B, 20", updated.Address)
+	assert.Equal(t, "Praça da Sé, 20, Apto 2 - Sé, São Paulo - SP, 01001-000", updated.Address)
+	assert.Nil(t, updated.Latitude, "a new address without coordinates drops the old map position")
 	assert.Equal(t, created.RecipientName, updated.RecipientName, "fields not sent stay the same")
 	assert.Equal(t, ptr(int64(2)), updated.DriverID)
+
+	updated, err = svc.Update(context.Background(), owner, created.ID, UpdateInput{Latitude: ptr(-23.5), Longitude: ptr(-46.6)})
+	require.NoError(t, err)
+	assert.Equal(t, ptr(-23.5), updated.Latitude, "the pin can be moved alone")
+
+	updated, err = svc.Update(context.Background(), owner, created.ID, UpdateInput{RecipientName: ptr("Maria Lima")})
+	require.NoError(t, err)
+	assert.Equal(t, ptr(-23.5), updated.Latitude, "a change outside the address keeps the map position")
 
 	_, err = svc.Update(context.Background(), owner, created.ID, UpdateInput{RecipientEmail: ptr("nope")})
 	var verr *apperr.ValidationError
 	assert.ErrorAs(t, err, &verr)
+}
+
+// Deliveries created before the address was split only have the one-line
+// address; editing anything else must not ask for the parts.
+func TestUpdate_LegacyAddress(t *testing.T) {
+	fs := newFakeStore()
+	fs.deliveries[7] = store.Delivery{ID: 7, CarrierID: 1, RecipientName: "Maria", RecipientEmail: "maria@example.com", Address: "Rua A, 10", Status: StatusPending}
+	svc := NewService(fs)
+
+	d, err := svc.Update(context.Background(), owner, 7, UpdateInput{RecipientName: ptr("Maria Souza")})
+	require.NoError(t, err)
+	assert.Equal(t, "Rua A, 10", d.Address)
+
+	_, err = svc.Update(context.Background(), owner, 7, UpdateInput{Number: ptr("20")})
+	var verr *apperr.ValidationError
+	require.ErrorAs(t, err, &verr, "changing the address asks for all of it")
+	assert.Contains(t, verr.Fields, "postal_code")
 }
 
 func TestList_Paging(t *testing.T) {

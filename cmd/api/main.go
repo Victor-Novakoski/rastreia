@@ -21,6 +21,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/push"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/retention"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
@@ -110,6 +111,7 @@ func run() error {
 			Auth:       authHandler,
 			Users:      user.NewHandler(users, authHandler),
 			Deliveries: delivery.NewHandler(deliveries),
+			Routes:     route.NewHandler(route.NewService(route.NewPGStore(pool), deliveries)),
 			Live:       delivery.NewLiveHandler(deliveries, live, tokens),
 			Push:       pushes,
 			Ready: func(r *http.Request) error {

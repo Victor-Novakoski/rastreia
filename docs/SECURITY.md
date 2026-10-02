@@ -208,7 +208,7 @@ O único cookie é o `rastreia_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/a
 ## 19. CORS — ✅
 
 - Lista exata de origens vinda de `CORS_ORIGINS` (padrão: `http://localhost:5173`, o Vite), sem `*`. Em produção só aceita `https`.
-- Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
+- Só os métodos (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`) e cabeçalhos (`Authorization`, `Content-Type`, `Idempotency-Key`) usados.
 - `credentials` liberado, porque o refresh token vai no cookie (item 18). Por isso a lista de origens nunca pode ter `*`.
 
 ## 20. XSS — ✅

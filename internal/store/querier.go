@@ -10,10 +10,16 @@ import (
 )
 
 type Querier interface {
+	// AddRouteItem puts the delivery at the end of the route; adding it twice
+	// changes nothing and affects no rows.
+	AddRouteItem(ctx context.Context, arg AddRouteItemParams) (int64, error)
 	// AnonymizeDeliveries erases the recipient of deliveries finished before
 	// the given time, and the drivers' notes, which are free text and may name
 	// people. Returns how many deliveries were anonymized.
 	AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error)
+	// ClaimDelivery assigns a delivery with no driver to the driver who scanned
+	// it; one that already has a driver is left alone.
+	ClaimDelivery(ctx context.Context, arg ClaimDeliveryParams) (Delivery, error)
 	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
 	// several API instances run the relay without sending an event twice.
 	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
@@ -34,6 +40,8 @@ type Querier interface {
 	DeletePushSubscription(ctx context.Context, arg DeletePushSubscriptionParams) error
 	DeletePushSubscriptionByID(ctx context.Context, id int64) error
 	DeletePushSubscriptionsByCode(ctx context.Context, trackingCode string) error
+	// EnsureRoute returns the driver's route for the day, creating it on first use.
+	EnsureRoute(ctx context.Context, arg EnsureRouteParams) (Route, error)
 	GetCarrier(ctx context.Context, id int64) (Carrier, error)
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
@@ -46,7 +54,9 @@ type Querier interface {
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
+	ListRouteItems(ctx context.Context, routeID int64) ([]ListRouteItemsRow, error)
 	MarkEventsPublished(ctx context.Context, ids []int64) error
+	RemoveRouteItem(ctx context.Context, arg RemoveRouteItemParams) (int64, error)
 	// ReserveIdempotencyKey returns no row when the key already exists. A
 	// concurrent request with the same key waits here until the first one
 	// commits or rolls back.
@@ -56,9 +66,15 @@ type Querier interface {
 	// caller saw, so two concurrent events cannot both apply.
 	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
+	// SetRoutePositions numbers the route's deliveries in the order of the ids
+	// given, from 1.
+	SetRoutePositions(ctx context.Context, arg SetRoutePositionsParams) error
 	// SkipStaleEvents drops notifications nobody wants anymore, such as the ones
 	// piled up while RabbitMQ was off.
 	SkipStaleEvents(ctx context.Context, before time.Time) (int64, error)
+	// UpdateDelivery writes every recipient and address field: the service
+	// merges the change into the current delivery first. The driver is only
+	// changed when sent.
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
 	UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error
 	// Marks the token used only if nobody did it first, so two refreshes racing

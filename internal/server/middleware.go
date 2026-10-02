@@ -36,7 +36,7 @@ func securityHeaders(production bool) func(http.Handler) http.Handler {
 func corsPolicy(origins []string) func(http.Handler) http.Handler {
 	return cors.Handler(cors.Options{
 		AllowedOrigins: origins,
-		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowedHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key"},
 		ExposedHeaders: []string{"Retry-After", "Idempotent-Replayed"},
 		// The refresh token travels in a cookie (SECURITY.md #14 and #18).

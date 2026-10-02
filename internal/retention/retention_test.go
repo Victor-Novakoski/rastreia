@@ -27,7 +27,9 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	svc := delivery.NewService(delivery.NewPGStore(pool))
 	create := func() delivery.Delivery {
 		d, err := svc.Create(ctx, owner, delivery.CreateInput{
-			RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
+			RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", RecipientPhone: "11987654321",
+			PostalCode: "01001000", Street: "Praça da Sé", Number: "10", District: "Sé", City: "São Paulo", State: "SP",
+			Latitude: ptrTo(-23.55), Longitude: ptrTo(-46.63),
 		})
 		require.NoError(t, err)
 		return d
@@ -64,6 +66,9 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	assert.Equal(t, "Destinatário removido", got.RecipientName)
 	assert.Empty(t, got.RecipientEmail)
 	assert.Empty(t, got.Address)
+	assert.Empty(t, got.RecipientPhone)
+	assert.Empty(t, got.Street)
+	assert.Nil(t, got.Latitude)
 	assert.NotNil(t, got.AnonymizedAt)
 	events, err := svc.ListEvents(ctx, owner, old.ID)
 	require.NoError(t, err)
@@ -89,3 +94,5 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n, "runs again without touching it")
 }
+
+func ptrTo[T any](v T) *T { return &v }
