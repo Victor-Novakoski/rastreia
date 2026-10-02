@@ -11,7 +11,8 @@ Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o mot
 - **API:** Go, chi, pgx + sqlc, golang-migrate, Viper, JWT
 - **Front:** React, TypeScript, Vite, Tailwind CSS, React Router
 - **Banco:** PostgreSQL; Redis para tempo real, rate limit e bloqueio de login entre instâncias
-- **Testes:** testing + testify; integração com Postgres e Redis reais via testcontainers; Vitest + Testing Library no front
+- **Mensageria:** RabbitMQ com outbox transacional, retry e fila de falhas; worker de e-mail separado
+- **Testes:** testing + testify; integração com Postgres, Redis e RabbitMQ reais via testcontainers; Vitest + Testing Library no front
 - **Infra:** Docker e Docker Compose
 
 Atualização em tempo real por WebSocket na página de rastreio e no painel.
@@ -43,6 +44,8 @@ A API sobe em `http://localhost:8080` e o front em `http://localhost:5173` (logi
 | E-mail | Senha |
 | --- | --- |
 | admin@rastreia.dev | admin12345 |
+
+Os e-mails de notificação (um a cada mudança de status) caem no Mailpit, em `http://localhost:8025`. O painel do RabbitMQ fica em `http://localhost:15672` (guest/guest).
 
 Se a porta 5432 já estiver ocupada por um Postgres instalado no seu PC, suba o banco em outra porta com `DB_PORT=5433 docker compose up --build`.
 

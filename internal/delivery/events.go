@@ -37,7 +37,10 @@ type Event struct {
 }
 
 func eventFromStore(e store.DeliveryEvent) Event {
-	return Event(e)
+	return Event{
+		ID: e.ID, DeliveryID: e.DeliveryID, Status: e.Status,
+		Note: e.Note, CreatedBy: e.CreatedBy, CreatedAt: e.CreatedAt,
+	}
 }
 
 type EventInput struct {

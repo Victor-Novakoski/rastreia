@@ -4,13 +4,20 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 5 (tempo real) concluída: WebSocket e Redis. Próximo: notificações (etapa 6). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6 (notificações) em andamento: e-mail pelo RabbitMQ pronto; falta Web Push e retenção de dados. Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — `delivery_events` como outbox, com um relay na API que publica no RabbitMQ.** *Publicar direto depois do commit perde a notificação se a API cair ou o RabbitMQ estiver fora; com o outbox o evento e a notificação são gravados juntos. `SKIP LOCKED` deixa várias instâncias rodarem o relay.* (publicar após o commit; tabela `outbox` separada, que duplicaria o evento)
+- **2026-10-02 — Retry com fila de espera (TTL de 30s) e fila de falhas depois de 5 tentativas.** *O RabbitMQ conta as tentativas no header `x-death`, sem estado no worker; mensagem inválida vai direto para a fila de falhas.* (requeue imediato, que vira loop; plugin de delayed message)
+- **2026-10-02 — Pelo menos uma vez, sem deduplicar no worker.** *Duplicar um e-mail raro é aceitável e deduplicar exigiria banco ou Redis no worker.*
+- **2026-10-02 — Worker sem acesso ao banco; a mensagem leva nome e e-mail.** *Menos permissão no worker.* (worker buscando a entrega pelo id)
+- **2026-10-02 — E-mail com go-mail e Mailpit em desenvolvimento.** *go-mail cuida de MIME, UTF-8 no assunto e STARTTLS; o Mailpit mostra os e-mails sem mandar nada de verdade.* (`net/smtp`, MailHog, que parou de ser mantido)
+- **2026-10-02 — Celular por Web Push (PWA), não app nativo.** *Avisa como um app sem loja nem segundo código; no iPhone só funciona com o site adicionado à tela de início.* (React Native, SMS)
 
 - **2026-10-02 — Tempo real por WebSocket (`coder/websocket`), servidor só envia.** *O rastreio público recebe o mesmo corpo do `GET`, então a página não refaz a consulta; o painel recebe só `{delivery_id, status}` e invalida o cache do TanStack Query, sem dado pessoal no fio.* (SSE, que serviria e é mais simples, mas o PRD pede WebSocket; polling)
 - **2026-10-02 — Token do painel na primeira mensagem do WebSocket, não na URL.** *O navegador não manda `Authorization` no WebSocket, e token na URL vai parar em log. A API fecha com o código 4001 quando o token vence, e o front renova e reconecta.* (cookie, que exigiria mais checagem de CSRF; subprotocolo)

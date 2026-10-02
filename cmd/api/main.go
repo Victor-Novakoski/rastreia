@@ -17,6 +17,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/config"
 	"github.com/Victor-Novakoski/rastreia/internal/database"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/notify"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
@@ -75,6 +76,11 @@ func run() error {
 	}
 	deliveries := delivery.NewService(delivery.NewPGStore(pool)).WithPublisher(broker)
 	live := realtime.NewServer(ctx, broker, realtime.Options{Origins: cfg.AllowedOrigins()})
+	if cfg.RabbitMQURL != "" {
+		pub := notify.NewPublisher(cfg.RabbitMQURL)
+		defer pub.Close()
+		go notify.NewRelay(pool, pub).Run(ctx)
+	}
 
 	if cfg.AdminEmail != "" {
 		err := users.EnsureAdmin(ctx, user.CreateInput{

@@ -6,9 +6,13 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 type Querier interface {
+	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
+	// several API instances run the relay without sending an event twice.
+	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
 	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
@@ -24,6 +28,7 @@ type Querier interface {
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListUsersByRole(ctx context.Context, role string) ([]User, error)
+	MarkEventsPublished(ctx context.Context, ids []int64) error
 	// ReserveIdempotencyKey returns no row when the key already exists. A
 	// concurrent request with the same key waits here until the first one
 	// commits or rolls back.
@@ -33,6 +38,9 @@ type Querier interface {
 	// caller saw, so two concurrent events cannot both apply.
 	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
+	// SkipStaleEvents drops notifications nobody wants anymore, such as the ones
+	// piled up while RabbitMQ was off.
+	SkipStaleEvents(ctx context.Context, before time.Time) (int64, error)
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
 	// Marks the token used only if nobody did it first, so two refreshes racing
 	// with the same token cannot both succeed.
