@@ -4,7 +4,7 @@
 
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
-> Projeto em construção. Etapas prontas: base da API, segurança da base, eventos de status com rastreio público e CI. Em andamento: front-end (a página pública de rastreio já está pronta).
+> Projeto em construção. Etapas prontas: base da API, segurança da base, eventos de status com rastreio público, CI e front-end (painel admin, app do motorista e rastreio público).
 
 ## Stack
 
@@ -14,7 +14,7 @@ Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o mot
 - **Testes:** testing + testify; integração com Postgres real via testcontainers; Vitest + Testing Library no front
 - **Infra:** Docker e Docker Compose
 
-Próximas etapas: painel admin e app do motorista, tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
+Próximas etapas: tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
 
 ## Documentação
 
@@ -129,7 +129,7 @@ internal/
   user/               motoristas e admin inicial
   httpx/, apperr/     helpers de HTTP e erros
   testdb/             Postgres temporário para os testes de integração
-web/                  front-end em React (rastreio público; painel e app do motorista em seguida)
+web/                  front-end em React: rastreio público, painel admin e app do motorista
 ```
 
 ## Decisões
