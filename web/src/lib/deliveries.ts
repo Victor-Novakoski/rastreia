@@ -25,6 +25,9 @@ export type DeliveryEvent = {
   created_at: string
 }
 
+/** Aviso do WebSocket do painel: qual entrega mudou. */
+export type PanelChange = { delivery_id: number; status: Status }
+
 export type Driver = { id: number; name: string; email: string; role: 'driver'; created_at: string }
 
 export type DeliveryInput = {

@@ -154,3 +154,26 @@ func TestStream_Auth(t *testing.T) {
 		assert.Equal(t, StatusUnauthorized, websocket.CloseStatus(err))
 	})
 }
+
+// net/http clears the read and write deadlines on hijack; this guards that
+// a WebSocket keeps working past them.
+func TestStream_OutlivesServerTimeouts(t *testing.T) {
+	b := NewLocal()
+	s := NewServer(t.Context(), b, Options{Origins: []string{origin}})
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Stream(w, r, "topic", nil)
+	}))
+	srv.Config.ReadTimeout = 200 * time.Millisecond
+	srv.Config.WriteTimeout = 200 * time.Millisecond
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	c, _, err := dial(t, "ws"+strings.TrimPrefix(srv.URL, "http"), origin)
+	require.NoError(t, err)
+	waitSubscribed(t, b, 1)
+	time.Sleep(500 * time.Millisecond)
+
+	require.NoError(t, b.Publish(t.Context(), "topic", []byte(`{}`)))
+	_, err = read(t, c)
+	assert.NoError(t, err, "the plain-request timeouts must not close a WebSocket")
+}

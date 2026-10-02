@@ -3,11 +3,13 @@ import { Link, useParams } from 'react-router'
 import { PublicLayout } from '../components/PublicLayout'
 import { Spinner } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
+import { LiveBadge } from '../components/LiveBadge'
 import { StatusIcon } from '../components/StatusIcon'
 import { ApiError } from '../lib/api'
 import { formatDateTime } from '../lib/format'
 import { statusInfo, toneClasses } from '../lib/status'
 import { getTracking, isValidCode, normalizeCode, type Tracking } from '../lib/tracking'
+import { useLive } from '../lib/useLive'
 
 type State =
   | { kind: 'loading' }
@@ -42,6 +44,16 @@ export function TrackingPage() {
       ? result.state
       : { kind: 'loading' }
 
+  // Depois de carregar, cada mudança chega pelo WebSocket já no formato do GET.
+  const showTracking = (tracking: Tracking) => setResult({ key, state: { kind: 'ok', tracking } })
+  const live = useLive(state.kind === 'ok' ? `/public/tracking/${encodeURIComponent(code)}/live` : null, {
+    onMessage: (data) => showTracking(data as Tracking),
+    // Durante a queda alguma mudança pode ter passado sem aviso.
+    onOpen: (again) => {
+      if (again) getTracking(code).then(showTracking, () => {})
+    },
+  })
+
   return (
     <PublicLayout>
       <p className="font-mono text-sm tracking-wider text-slate-600">{code}</p>
@@ -67,7 +79,7 @@ export function TrackingPage() {
           </button>
         </Message>
       )}
-      {state.kind === 'ok' && <TrackingDetails tracking={state.tracking} />}
+      {state.kind === 'ok' && <TrackingDetails tracking={state.tracking} live={live} />}
     </PublicLayout>
   )
 }
@@ -83,13 +95,14 @@ function toErrorState(err: unknown): State {
   return { kind: 'error', message: 'Algo deu errado do nosso lado.' }
 }
 
-function TrackingDetails({ tracking }: { tracking: Tracking }) {
+function TrackingDetails({ tracking, live }: { tracking: Tracking; live: boolean }) {
   const events = [...tracking.events].sort((a, b) => b.created_at.localeCompare(a.created_at))
   return (
     <>
       <h1 className="mt-1 text-2xl font-bold">Olá, {tracking.recipient_first_name}</h1>
-      <div className="mt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <StatusBadge status={tracking.status} size="lg" />
+        {live && <LiveBadge />}
       </div>
       <p className="mt-2 text-sm text-slate-600">Atualizado em {formatDateTime(tracking.updated_at)}</p>
 

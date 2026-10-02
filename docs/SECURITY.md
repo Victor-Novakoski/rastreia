@@ -223,7 +223,9 @@ Middleware em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Op
 
 **Feito:** `ReadHeaderTimeout` de 5 s, `ReadTimeout` de 15 s, `WriteTimeout` de 30 s, `IdleTimeout` de 60 s, timeout de 15 s por requisição no roteador, corpo limitado a 1 MB, paginação com máximo de 100 itens e rate limit (item 15).
 
-**Falta:** limite de conexões no pool do banco ajustado para produção, e no WebSocket (etapa 5) um limite de conexões por IP e de tamanho de mensagem.
+No WebSocket: no máximo 20 conexões abertas por IP, mensagem do cliente limitada a 4 KB, 5 s para mandar o token, ping a cada 30 s e conexão fechada quando o token vence. O WebSocket público só abre para código válido e conta no rate limit do rastreio, e o `Origin` precisa estar na lista do CORS.
+
+**Falta:** limite de conexões no pool do banco ajustado para produção.
 
 ## 23. Falsificação de IP — ✅
 

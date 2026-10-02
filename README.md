@@ -114,6 +114,8 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | GET, POST | `/deliveries/{id}/events` | admin e motorista dono da entrega |
 | GET | `/me/deliveries` | motorista |
 | GET | `/public/tracking/{code}` | público (30 req/min por IP) |
+| GET | `/public/tracking/{code}/live` | público, WebSocket com cada mudança |
+| GET | `/live/deliveries` | admin, WebSocket do painel (token na primeira mensagem) |
 
 ## Estrutura
 

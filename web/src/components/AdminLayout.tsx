@@ -1,6 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../lib/auth'
+import type { PanelChange } from '../lib/deliveries'
+import { useLive } from '../lib/useLive'
+import { LiveBadge } from './LiveBadge'
 
 const link = ({ isActive }: { isActive: boolean }) =>
   `rounded-md px-3 py-2 font-medium focus-visible:outline-2 focus-visible:outline-white ${isActive ? 'bg-brand-700' : 'hover:bg-brand-700/60'}`
@@ -10,6 +13,7 @@ export function AdminLayout() {
   const queryClient = useQueryClient()
   // Dados de uma sessão não ficam no cache para a próxima.
   const exit = () => void logout().finally(() => queryClient.clear())
+  const live = usePanelLive()
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="bg-brand-800 text-white">
@@ -21,7 +25,8 @@ export function AdminLayout() {
           <NavLink to="/admin/motoristas" className={link}>
             Motoristas
           </NavLink>
-          <button type="button" onClick={exit} className="ml-auto rounded-md px-3 py-2 font-medium hover:bg-brand-700/60">
+          <span className="ml-auto">{live && <LiveBadge tone="dark" />}</span>
+          <button type="button" onClick={exit} className="rounded-md px-3 py-2 font-medium hover:bg-brand-700/60">
             Sair
           </button>
         </nav>
@@ -31,4 +36,23 @@ export function AdminLayout() {
       </main>
     </div>
   )
+}
+
+/** Recarrega listas e detalhes quando outra pessoa muda uma entrega. */
+function usePanelLive(): boolean {
+  const { accessToken } = useAuth()
+  const queryClient = useQueryClient()
+  return useLive('/live/deliveries', {
+    token: accessToken,
+    onMessage: (data) => {
+      const { delivery_id: id } = data as PanelChange
+      void queryClient.invalidateQueries({ queryKey: ['deliveries'] })
+      void queryClient.invalidateQueries({ queryKey: ['delivery', id] })
+      void queryClient.invalidateQueries({ queryKey: ['events', id] })
+    },
+    // Durante a queda alguma mudança pode ter passado sem aviso.
+    onOpen: (again) => {
+      if (again) void queryClient.invalidateQueries()
+    },
+  })
 }

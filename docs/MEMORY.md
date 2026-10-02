@@ -12,6 +12,10 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-02 — Tempo real por WebSocket (`coder/websocket`), servidor só envia.** *O rastreio público recebe o mesmo corpo do `GET`, então a página não refaz a consulta; o painel recebe só `{delivery_id, status}` e invalida o cache do TanStack Query, sem dado pessoal no fio.* (SSE, que serviria e é mais simples, mas o PRD pede WebSocket; polling)
+- **2026-10-02 — Token do painel na primeira mensagem do WebSocket, não na URL.** *O navegador não manda `Authorization` no WebSocket, e token na URL vai parar em log. A API fecha com o código 4001 quando o token vence, e o front renova e reconecta.* (cookie, que exigiria mais checagem de CSRF; subprotocolo)
+- **2026-10-02 — Broker em memória atrás da interface `realtime.Broker`.** *Com uma instância basta; o Redis entra trocando só a implementação.*
+
 - **2026-10-02 — CSP do front numa `<meta>` injetada no build.** *O front vai ser estático numa CDN, e a política acompanha o HTML sem depender da configuração do servidor; só `frame-ancestors` precisa ir no cabeçalho.* (CSP só no cabeçalho da CDN; nonce, que exige servidor)
 
 - **2026-10-02 — App do motorista lê até 100 entregas de `/me/deliveries` e acha a entrega na lista.** *A API não tem `GET /me/deliveries/{id}`, e 100 cobre o dia de um motorista; entregas antigas somem da lista, o que não atrapalha.* (rota nova na API)

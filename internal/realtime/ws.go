@@ -81,12 +81,6 @@ func (s *Server) Stream(w http.ResponseWriter, r *http.Request, topic string, au
 	}
 	defer s.release(ip)
 
-	// The server's read and write timeouts are for plain requests; a
-	// WebSocket stays open and has its own ping and write timeouts.
-	rc := http.NewResponseController(w)
-	_ = rc.SetReadDeadline(time.Time{})
-	_ = rc.SetWriteDeadline(time.Time{})
-
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: s.origins})
 	if err != nil {
 		return // Accept already answered the request
