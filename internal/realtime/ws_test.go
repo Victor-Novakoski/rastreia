@@ -24,7 +24,11 @@ func newTestServer(t *testing.T, authorize Authorize, opts Options) (*Local, str
 	opts.Origins = []string{origin}
 	s := NewServer(shutdown, b, opts)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.Stream(w, r, "topic", authorize)
+		if authorize == nil {
+			s.Stream(w, r, "topic")
+			return
+		}
+		s.StreamAuth(w, r, authorize)
 	}))
 	t.Cleanup(srv.Close)
 	return b, "ws" + strings.TrimPrefix(srv.URL, "http"), stop
@@ -113,11 +117,11 @@ func TestStream_ClosesOnShutdown(t *testing.T) {
 }
 
 func allowToken(valid string, ttl time.Duration) Authorize {
-	return func(token string) (time.Time, error) {
+	return func(token string) (string, time.Time, error) {
 		if token != valid {
-			return time.Time{}, errors.New("bad token")
+			return "", time.Time{}, errors.New("bad token")
 		}
-		return time.Now().Add(ttl), nil
+		return "topic", time.Now().Add(ttl), nil
 	}
 }
 
@@ -161,7 +165,7 @@ func TestStream_OutlivesServerTimeouts(t *testing.T) {
 	b := NewLocal()
 	s := NewServer(t.Context(), b, Options{Origins: []string{origin}})
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.Stream(w, r, "topic", nil)
+		s.Stream(w, r, "topic")
 	}))
 	srv.Config.ReadTimeout = 200 * time.Millisecond
 	srv.Config.WriteTimeout = 200 * time.Millisecond

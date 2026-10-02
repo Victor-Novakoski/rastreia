@@ -87,7 +87,8 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 
 ## 6. IDOR (acesso a recurso de outra pessoa pelo id) — ✅
 
-- Rotas de admin (`/drivers`, `/deliveries`, `/deliveries/{id}`) respondem 403 para motorista.
+- Cada transportadora é um tenant. O `carrier_id` vem do token, e toda leitura ou escrita confere a transportadora: listagens filtram na query SQL, buscas por id respondem **404** quando a entrega é de outra transportadora, e motorista de outra transportadora não pode ser atribuído (422). Testes: `TestCarrierIsolation` (service) e `TestIntegration_CarriersAreIsolated` (API com Postgres real).
+- Rotas da transportadora (`/drivers`, `/deliveries`, `/deliveries/{id}`, `/summary`) respondem 403 para motorista.
 - O motorista lista entregas por `/me/deliveries`, e o filtro `driver_id = <id do token>` fica **na query SQL** (`ListDriverDeliveries`): entrega de outro motorista nunca sai do banco.
 - `GET`/`POST /deliveries/{id}/events` conferem se a entrega pertence ao motorista; se não pertencer (ou não tiver motorista), respondem **404**, igual a uma entrega inexistente, para não confirmar que o id existe.
 - O rastreio público usa só o código aleatório (10 caracteres de um alfabeto de 32, cerca de 50 bits), nunca o id sequencial.
@@ -236,7 +237,7 @@ O `X-Forwarded-For` só é lido com `TRUST_PROXY=true`, que deve ser ligado apen
 
 ## 24. Enumeração de e-mails — ✅
 
-Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, então o tempo é o mesmo dos dois jeitos (medido: ~80 a 90 ms em ambos). A mensagem também é a mesma, e o bloqueio por falhas vale para qualquer e-mail. O cadastro de motorista (409 "e-mail já usado") só é acessível ao admin.
+Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, então o tempo é o mesmo dos dois jeitos (medido: ~80 a 90 ms em ambos). A mensagem também é a mesma, e o bloqueio por falhas vale para qualquer e-mail. O cadastro de motorista (409 "e-mail já usado") só é acessível à transportadora. O cadastro aberto de transportadora também responde 409 para e-mail usado, o que revela que o e-mail tem conta; é o mesmo trade-off de qualquer cadastro aberto, e a rota divide o rate limit do login (10/min por IP).
 
 ## 25. Banco de dados exposto — 🟡
 

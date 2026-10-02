@@ -16,20 +16,21 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/testdb"
 )
 
-// setup returns a service on a fresh database with one admin and one driver.
+// setup returns a service on a fresh database with one owner and one driver.
 func setup(t *testing.T) (*delivery.Service, *pgxpool.Pool, auth.Claims, auth.Claims) {
 	t.Helper()
 	pool := testdb.New(t)
 	q := store.New(pool)
 	ctx := context.Background()
-	a, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin})
+	carrierID := testdb.Carrier(t, pool)
+	a, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: carrierID, Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier})
 	require.NoError(t, err)
-	d, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Ana", Email: "ana@example.com", PasswordHash: "x", Role: auth.RoleDriver})
+	d, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: carrierID, Name: "Ana", Email: "ana@example.com", PasswordHash: "x", Role: auth.RoleDriver})
 	require.NoError(t, err)
 	return delivery.NewService(delivery.NewPGStore(pool)),
 		pool,
-		auth.Claims{UserID: a.ID, Role: auth.RoleAdmin},
-		auth.Claims{UserID: d.ID, Role: auth.RoleDriver}
+		auth.Claims{UserID: a.ID, Role: auth.RoleCarrier, CarrierID: carrierID},
+		auth.Claims{UserID: d.ID, Role: auth.RoleDriver, CarrierID: carrierID}
 }
 
 func input(driverID int64) delivery.CreateInput {
@@ -46,17 +47,17 @@ func count(t *testing.T, pool *pgxpool.Pool, table string) int {
 }
 
 func TestPG_JourneyAndTracking(t *testing.T) {
-	svc, _, admin, driver := setup(t)
+	svc, _, owner, driver := setup(t)
 	ctx := context.Background()
 
-	d, err := svc.Create(ctx, admin.UserID, input(driver.UserID))
+	d, err := svc.Create(ctx, owner, input(driver.UserID))
 	require.NoError(t, err)
 	for _, st := range []string{delivery.StatusPickedUp, delivery.StatusInTransit, delivery.StatusDelivered} {
 		_, err := svc.AddEvent(ctx, driver, d.ID, delivery.EventInput{Status: st})
 		require.NoError(t, err, st)
 	}
 
-	got, err := svc.Get(ctx, d.ID)
+	got, err := svc.Get(ctx, owner, d.ID)
 	require.NoError(t, err)
 	assert.Equal(t, delivery.StatusDelivered, got.Status)
 	assert.NotNil(t, got.CompletedAt)
@@ -64,6 +65,7 @@ func TestPG_JourneyAndTracking(t *testing.T) {
 	tr, err := svc.Track(ctx, d.TrackingCode)
 	require.NoError(t, err)
 	assert.Equal(t, "Maria", tr.RecipientFirstName)
+	assert.Equal(t, "Transportadora Teste", tr.CarrierName)
 	require.Len(t, tr.Events, 4)
 	assert.Equal(t, delivery.StatusPending, tr.Events[0].Status)
 
@@ -73,9 +75,9 @@ func TestPG_JourneyAndTracking(t *testing.T) {
 }
 
 func TestPG_ConcurrentEventsApplyOnce(t *testing.T) {
-	svc, pool, admin, driver := setup(t)
+	svc, pool, owner, driver := setup(t)
 	ctx := context.Background()
-	d, err := svc.Create(ctx, admin.UserID, input(driver.UserID))
+	d, err := svc.Create(ctx, owner, input(driver.UserID))
 	require.NoError(t, err)
 
 	const n = 10
@@ -101,7 +103,7 @@ func TestPG_ConcurrentEventsApplyOnce(t *testing.T) {
 }
 
 func TestPG_IdempotentCreateUnderConcurrency(t *testing.T) {
-	svc, pool, admin, driver := setup(t)
+	svc, pool, owner, driver := setup(t)
 	ctx := context.Background()
 
 	const n = 10
@@ -110,7 +112,7 @@ func TestPG_IdempotentCreateUnderConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range n {
 		wg.Go(func() {
-			d, _, err := svc.CreateIdempotent(ctx, admin.UserID, "retry-123", input(driver.UserID))
+			d, _, err := svc.CreateIdempotent(ctx, owner, "retry-123", input(driver.UserID))
 			ids[i], errs[i] = d.ID, err
 		})
 	}
@@ -125,10 +127,12 @@ func TestPG_IdempotentCreateUnderConcurrency(t *testing.T) {
 }
 
 func TestPG_FailedTransactionLeavesNoTrace(t *testing.T) {
-	svc, pool, _, _ := setup(t)
+	svc, pool, owner, _ := setup(t)
 	// The first event references a user that does not exist, so its insert
 	// fails after the delivery row was written.
-	_, err := svc.Create(context.Background(), 999_999, delivery.CreateInput{
+	ghost := owner
+	ghost.UserID = 999_999
+	_, err := svc.Create(context.Background(), ghost, delivery.CreateInput{
 		RecipientName: "Maria", RecipientEmail: "maria@example.com", Address: "Rua A",
 	})
 	require.Error(t, err)

@@ -62,18 +62,29 @@ func NewServer(shutdown context.Context, b Broker, opts Options) *Server {
 }
 
 // Authorize checks the token a browser sends as its first message and says
-// when the connection must close because the token expired.
-type Authorize func(token string) (expires time.Time, err error)
+// which topic the browser may follow and when the connection must close
+// because the token expired.
+type Authorize func(token string) (topic string, expires time.Time, err error)
 
 type authMessage struct {
 	Token string `json:"token"`
 }
 
 // Stream upgrades the request and sends every message published on topic
-// until the client leaves. With authorize set, the first message from the
-// client must be {"token": "..."}; browsers cannot send an Authorization
-// header on a WebSocket, and a token in the URL would end up in logs.
-func (s *Server) Stream(w http.ResponseWriter, r *http.Request, topic string, authorize Authorize) {
+// until the client leaves.
+func (s *Server) Stream(w http.ResponseWriter, r *http.Request, topic string) {
+	s.stream(w, r, topic, nil)
+}
+
+// StreamAuth is Stream for logged-in users: the first message from the
+// client must be {"token": "..."}, and authorize picks the topic from it.
+// Browsers cannot send an Authorization header on a WebSocket, and a token
+// in the URL would end up in logs.
+func (s *Server) StreamAuth(w http.ResponseWriter, r *http.Request, authorize Authorize) {
+	s.stream(w, r, "", authorize)
+}
+
+func (s *Server) stream(w http.ResponseWriter, r *http.Request, topic string, authorize Authorize) {
 	ip := clientIP(r)
 	if !s.acquire(ip) {
 		httpx.Error(w, http.StatusTooManyRequests, "too many open connections")
@@ -91,7 +102,8 @@ func (s *Server) Stream(w http.ResponseWriter, r *http.Request, topic string, au
 	ctx := r.Context()
 	var expires <-chan time.Time
 	if authorize != nil {
-		exp, err := readAuth(ctx, c, authorize)
+		var exp time.Time
+		topic, exp, err = readAuth(ctx, c, authorize)
 		if err != nil {
 			_ = c.Close(StatusUnauthorized, "unauthorized")
 			return
@@ -142,19 +154,19 @@ func (s *Server) Stream(w http.ResponseWriter, r *http.Request, topic string, au
 	}
 }
 
-func readAuth(ctx context.Context, c *websocket.Conn, authorize Authorize) (time.Time, error) {
+func readAuth(ctx context.Context, c *websocket.Conn, authorize Authorize) (string, time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, authTimeout)
 	defer cancel()
 	typ, data, err := c.Read(ctx)
 	if err != nil {
-		return time.Time{}, err
+		return "", time.Time{}, err
 	}
 	if typ != websocket.MessageText {
-		return time.Time{}, errors.New("auth message must be text")
+		return "", time.Time{}, errors.New("auth message must be text")
 	}
 	var m authMessage
 	if err := json.Unmarshal(data, &m); err != nil {
-		return time.Time{}, err
+		return "", time.Time{}, err
 	}
 	return authorize(m.Token)
 }

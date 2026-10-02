@@ -105,12 +105,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := h.guard.Success(r.Context(), email); err != nil {
 		slog.Error("login guard", "err", err)
 	}
-	refresh, err := h.sessions.Start(r.Context(), user.ID)
+	h.StartSession(w, r, Claims{UserID: user.ID, Role: user.Role, CarrierID: user.CarrierID})
+}
+
+// StartSession opens a session for a user who just proved who they are (a
+// login or a sign-up) and answers with the access token and refresh cookie.
+func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request, c Claims) {
+	refresh, err := h.sessions.Start(r.Context(), c.UserID)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
-	h.respondWithTokens(w, Claims{UserID: user.ID, Role: user.Role}, refresh)
+	h.respondWithTokens(w, c, refresh)
 }
 
 // Refresh trades the refresh cookie for a new access token and a new cookie.

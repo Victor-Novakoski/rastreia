@@ -2,7 +2,10 @@ openapi: 3.0.3
 info:
   title: Rastreia API
   version: 0.1.0
-  description: Delivery tracking API. Admins create deliveries and drivers; drivers update status; customers follow a public tracking link.
+  description: |
+    Delivery tracking API. Carriers (transportadoras) sign up on their own and are tenants: every
+    authenticated route only sees the caller's carrier, and anything from another carrier answers 404.
+    Carriers create deliveries and drivers; drivers update status; customers follow a public tracking link.
 servers:
   - url: http://localhost:8080
 components:
@@ -29,8 +32,49 @@ components:
         id: { type: integer, format: int64 }
         name: { type: string }
         email: { type: string, format: email }
-        role: { type: string, enum: [admin, driver] }
+        role: { $ref: "#/components/schemas/Role" }
+        carrier_id: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
+    Role:
+      type: string
+      enum: [carrier, driver]
+      description: carrier runs a carrier (transportadora); driver delivers for it
+    Carrier:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Expresso Sul }
+        document: { type: string, nullable: true, description: CNPJ without punctuation }
+    Me:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            carrier: { $ref: "#/components/schemas/Carrier" }
+    SignUp:
+      type: object
+      required: [carrier_name, name, email, password]
+      properties:
+        carrier_name: { type: string, maxLength: 120 }
+        document:
+          type: string
+          nullable: true
+          description: |
+            Optional CNPJ, with or without punctuation. The alphanumeric format (letters in the first
+            12 characters) is accepted. Must be unique.
+        name: { type: string, description: Name of the person who runs the carrier }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10, description: At most 72 bytes; common passwords are refused }
+    Summary:
+      type: object
+      properties:
+        since: { type: string, format: date-time, description: Deliveries created from here on (30 days) are counted }
+        by_status:
+          type: object
+          description: Every status is present, with 0 when there is none
+          additionalProperties: { type: integer }
+          example: { pending: 4, picked_up: 2, in_transit: 3, delivered: 20, failed: 1 }
+        unassigned: { type: integer, description: Pending deliveries without a driver, whenever created }
     CreateDriver:
       type: object
       required: [name, email, password]
@@ -72,7 +116,7 @@ components:
         recipient_name: { type: string }
         recipient_email: { type: string, format: email }
         address: { type: string }
-        driver_id: { type: integer, format: int64 }
+        driver_id: { type: integer, format: int64, description: A driver of the same carrier }
     Event:
       type: object
       properties:
@@ -95,13 +139,14 @@ components:
       type: object
       properties:
         token: { type: string, description: Access token for the Authorization header }
-        role: { type: string, enum: [admin, driver] }
+        role: { $ref: "#/components/schemas/Role" }
         expires_in: { type: integer, description: Access token lifetime in seconds, example: 900 }
     Tracking:
       type: object
       description: Public view of a delivery. No e-mail, address, last name, driver or notes.
       properties:
         tracking_code: { type: string, example: RS7K2M9QXA4P }
+        carrier_name: { type: string, example: Expresso Sul }
         status: { $ref: "#/components/schemas/Status" }
         recipient_first_name: { type: string, example: Maria }
         updated_at: { type: string, format: date-time }
@@ -119,7 +164,7 @@ components:
         recipient_name: { type: string }
         recipient_email: { type: string, format: email }
         address: { type: string }
-        driver_id: { type: integer, format: int64 }
+        driver_id: { type: integer, format: int64, description: A driver of the same carrier }
   responses:
     BadRequest:
       description: Malformed request
@@ -177,6 +222,43 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/signup:
+    post:
+      summary: Sign a carrier up and log its owner in
+      description: |
+        Creates the carrier and the account of the person who runs it, with the carrier role, and
+        answers like /auth/login (access token plus the rastreia_refresh cookie). Shares the login
+        rate limit.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SignUp" } } }
+      responses:
+        "200":
+          description: Signed up and logged in. Sets the rastreia_refresh cookie.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: E-mail or CNPJ already in use }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /me:
+    get:
+      summary: The logged-in user and their carrier
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Current user
+          content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /summary:
+    get:
+      summary: Carrier dashboard numbers
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Summary
+          content: { application/json: { schema: { $ref: "#/components/schemas/Summary" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /auth/refresh:
     post:
       summary: Trade the refresh cookie for a new access token and a new cookie
@@ -204,7 +286,7 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /drivers:
     get:
-      summary: List drivers
+      summary: List the carrier's drivers
       security: [{ bearer: [] }]
       responses:
         "200":
@@ -213,7 +295,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
-      summary: Create a driver
+      summary: Create a driver for the carrier
       security: [{ bearer: [] }]
       requestBody:
         required: true
@@ -229,7 +311,7 @@ paths:
         "422": { $ref: "#/components/responses/Invalid" }
   /deliveries:
     get:
-      summary: List deliveries, newest first
+      summary: List the carrier's deliveries, newest first
       security: [{ bearer: [] }]
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
@@ -297,7 +379,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:
       summary: Status history of a delivery, oldest first
-      description: Admins see every delivery; drivers only those assigned to them (404 for any other).
+      description: Carriers see every delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       responses:
         "200":
@@ -307,7 +389,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       summary: Change the status of a delivery
-      description: Admins may change any delivery; drivers only those assigned to them (404 for any other).
+      description: Carriers may change any delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       requestBody:
         required: true
@@ -423,12 +505,12 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /live/deliveries:
     get:
-      summary: Live changes for the admin panel over WebSocket
+      summary: Live changes for the carrier panel over WebSocket
       description: |
         Upgrades to a WebSocket. Browsers cannot send an Authorization header here, so the first
-        message must be `{"token": "<admin access token>"}`, within 5 seconds. Then the server sends
-        `{"delivery_id": 1, "status": "in_transit"}` whenever a delivery is created or changes.
-        Close code 4001 means the token is missing, invalid, not an admin's, or expired: renew it
+        message must be `{"token": "<carrier access token>"}`, within 5 seconds. Then the server sends
+        `{"delivery_id": 1, "status": "in_transit"}` whenever a delivery of that carrier is created or
+        changes. Close code 4001 means the token is missing, invalid, not a carrier's, or expired: renew it
         with POST /auth/refresh and reconnect.
       responses:
         "101": { description: Switching to WebSocket }

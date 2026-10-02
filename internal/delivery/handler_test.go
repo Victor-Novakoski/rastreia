@@ -19,7 +19,7 @@ func newTestRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(auth.WithClaims(r.Context(), admin)))
+			next.ServeHTTP(w, r.WithContext(auth.WithClaims(r.Context(), owner)))
 		})
 	})
 	r.Get("/deliveries", h.List)

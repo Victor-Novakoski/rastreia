@@ -17,7 +17,15 @@ type Querier interface {
 	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
 	// several API instances run the relay without sending an event twice.
 	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
+	// CountDeliveriesByStatus feeds the carrier's dashboard. since limits the
+	// count to deliveries created from that moment on.
+	CountDeliveriesByStatus(ctx context.Context, arg CountDeliveriesByStatusParams) ([]CountDeliveriesByStatusRow, error)
 	CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error)
+	CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error)
+	CreateCarrier(ctx context.Context, arg CreateCarrierParams) (Carrier, error)
+	// CreateCarrierWithOwner signs a carrier up with the person who runs it, in
+	// one statement, so a taken e-mail leaves no carrier behind.
+	CreateCarrierWithOwner(ctx context.Context, arg CreateCarrierWithOwnerParams) (User, error)
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
 	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
@@ -26,17 +34,18 @@ type Querier interface {
 	DeletePushSubscription(ctx context.Context, arg DeletePushSubscriptionParams) error
 	DeletePushSubscriptionByID(ctx context.Context, id int64) error
 	DeletePushSubscriptionsByCode(ctx context.Context, trackingCode string) error
+	GetCarrier(ctx context.Context, id int64) (Carrier, error)
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetRefreshToken(ctx context.Context, tokenHash []byte) (GetRefreshTokenRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	ListCarrierUsersByRole(ctx context.Context, arg ListCarrierUsersByRoleParams) ([]User, error)
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
-	ListUsersByRole(ctx context.Context, role string) ([]User, error)
 	MarkEventsPublished(ctx context.Context, ids []int64) error
 	// ReserveIdempotencyKey returns no row when the key already exists. A
 	// concurrent request with the same key waits here until the first one

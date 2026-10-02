@@ -12,9 +12,9 @@ import (
 
 func TestAuthenticateAndRequireRole(t *testing.T) {
 	tokens := NewTokens(testSecret, time.Hour)
-	adminToken, err := tokens.Issue(Claims{UserID: 1, Role: RoleAdmin})
+	ownerToken, err := tokens.Issue(Claims{UserID: 1, Role: RoleCarrier, CarrierID: 1})
 	require.NoError(t, err)
-	driverToken, err := tokens.Issue(Claims{UserID: 2, Role: RoleDriver})
+	driverToken, err := tokens.Issue(Claims{UserID: 2, Role: RoleDriver, CarrierID: 1})
 	require.NoError(t, err)
 
 	var seen Claims
@@ -22,7 +22,7 @@ func TestAuthenticateAndRequireRole(t *testing.T) {
 		seen, _ = FromContext(r.Context())
 		w.WriteHeader(http.StatusNoContent)
 	})
-	handler := tokens.Authenticate(RequireRole(RoleAdmin)(ok))
+	handler := tokens.Authenticate(RequireRole(RoleCarrier)(ok))
 
 	cases := []struct {
 		name   string
@@ -33,7 +33,7 @@ func TestAuthenticateAndRequireRole(t *testing.T) {
 		{"not bearer", "Basic abc", http.StatusUnauthorized},
 		{"invalid token", "Bearer nope", http.StatusUnauthorized},
 		{"wrong role", "Bearer " + driverToken, http.StatusForbidden},
-		{"admin", "Bearer " + adminToken, http.StatusNoContent},
+		{"admin", "Bearer " + ownerToken, http.StatusNoContent},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,5 +46,5 @@ func TestAuthenticateAndRequireRole(t *testing.T) {
 			assert.Equal(t, tc.want, rec.Code)
 		})
 	}
-	assert.Equal(t, Claims{UserID: 1, Role: RoleAdmin}, seen)
+	assert.Equal(t, Claims{UserID: 1, Role: RoleCarrier, CarrierID: 1}, seen)
 }

@@ -15,7 +15,7 @@ Um único binário Go (`cmd/api`) serve a API REST em JSON. O banco é PostgreSQ
 ## Visão alvo
 
 ```
-             ┌──────────── React + TypeScript (admin, motorista, rastreio público)
+             ┌──────────── React + TypeScript (transportadora, motorista, rastreio público)
              │                     │ HTTPS                │ WebSocket
              ▼                     ▼                      ▼
         CDN/estáticos  ──►  API Go  ◄──── pub/sub ────► Redis
@@ -40,7 +40,7 @@ internal/
     queries/          SQL de origem do sqlc
   store/              código GERADO pelo sqlc — não editar à mão
   auth/               JWT, bcrypt, login e middlewares de autenticação e papel
-  user/               cadastro e listagem de usuários (admin e motorista)
+  user/               cadastro da transportadora, motoristas e /me
   delivery/           regras de entregas
   notify/             notificações: relay do outbox para o RabbitMQ, worker, e-mail e Web Push
   push/               inscrição do navegador no Web Push pela página de rastreio
@@ -83,8 +83,17 @@ handler  ──►  service  ──►  Store (interface)  ──►  store (sql
 ## Autenticação
 
 - Senhas com bcrypt (custo padrão).
-- JWT HS256 assinado com `JWT_SECRET` (mínimo de 32 caracteres), validade `JWT_TTL` (24h hoje), com `sub` = id do usuário e `role`.
-- Papéis: `admin` e `driver`. O cliente final não tem conta; ele usa o código de rastreio.
+- JWT HS256 assinado com `JWT_SECRET` (mínimo de 32 caracteres), validade `JWT_TTL` (15 min por padrão), com `sub` = id do usuário, `role` e `cid` = id da transportadora.
+- Papéis: `carrier` (quem toca a transportadora) e `driver`. O cliente final não tem conta; ele usa o código de rastreio.
+
+## Várias transportadoras (tenants)
+
+- Cada transportadora é uma linha em `carriers`. Usuários e entregas têm `carrier_id`, e todo usuário pertence a exatamente uma transportadora.
+- O `carrier_id` vem do token, nunca do corpo da requisição. As listagens filtram por ele na query SQL; buscas por id conferem a transportadora no service (`visible`) e respondem 404 quando não bate.
+- Atribuir motorista confere que ele é da mesma transportadora.
+- O WebSocket do painel usa um tópico por transportadora (`deliveries:<id>`), escolhido a partir do token.
+- `POST /auth/signup` cria a transportadora e o responsável num único `INSERT` (CTE): e-mail repetido não deixa transportadora órfã.
+- `ADMIN_EMAIL`/`ADMIN_PASSWORD` criam a "Transportadora Demo" com essa conta, para um banco novo já ter login.
 - Melhorias planejadas (tokens curtos, refresh, revogação) estão em [SECURITY.md](SECURITY.md).
 
 ## Notificações

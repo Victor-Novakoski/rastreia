@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+type Carrier struct {
+	ID        int64
+	Name      string
+	Document  *string
+	CreatedAt time.Time
+}
+
 type Delivery struct {
 	ID             int64
 	TrackingCode   string
@@ -20,6 +27,7 @@ type Delivery struct {
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
 	AnonymizedAt   *time.Time
+	CarrierID      int64
 }
 
 type DeliveryEvent struct {
@@ -67,4 +75,5 @@ type User struct {
 	PasswordHash string
 	Role         string
 	CreatedAt    time.Time
+	CarrierID    int64
 }

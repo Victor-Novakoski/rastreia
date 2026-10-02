@@ -4,13 +4,21 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 6 (notificações) concluída: e-mail e Web Push pelo RabbitMQ e retenção de dados. Próximo: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6.5 (produto com várias transportadoras): API pronta, front em andamento. Depois: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — Várias transportadoras, cada uma um tenant, com `carrier_id` em usuários e entregas.** *O "admin" único não fazia sentido como produto; com o tenant, uma transportadora se cadastra e começa a usar sozinha.* (banco ou schema por transportadora, pesado demais para o tamanho do projeto; Row Level Security do Postgres, que esconde a regra fora do código e complica os testes)
+- **2026-10-02 — `carrier_id` no token (`cid`) e filtro no service, não em middleware.** *O token já diz quem é e de onde; os services recebem o `auth.Claims` e cada query filtra ou confere a transportadora, o que os testes de IDOR cobrem.* (buscar a transportadora no banco a cada requisição)
+- **2026-10-02 — Papel `admin` vira `carrier`.** *O nome bate com o produto; a migration converte os usuários antigos, e tokens antigos (sem `cid`) são recusados, então quem estava logado entra de novo.*
+- **2026-10-02 — Dados antigos vão para "Minha transportadora".** *A migration cria uma transportadora só se já existirem usuários ou entregas, então um banco novo começa vazio.*
+- **2026-10-02 — Cadastro da transportadora e do responsável num único `INSERT` com CTE.** *É atômico sem precisar de transação no service: e-mail repetido não deixa transportadora sem dono.* (transação com `InTx` no pacote user)
+- **2026-10-02 — CNPJ opcional, guardado sem pontuação e aceitando o formato alfanumérico.** *A Receita passou a emitir CNPJ com letras em julho de 2026; o dígito verificador usa o código ASCII menos 48, que dá o mesmo resultado para os números.* (CNPJ obrigatório, que atrapalha quem só quer testar)
+- **2026-10-02 — Um usuário por transportadora por enquanto.** *O responsável cadastra a conta e os motoristas; convites e papéis internos ficam fora do escopo* ([PRD](PRD.md)).
 
 - **2026-10-02 — Anonimizar 90 dias depois de concluída, sem apagar a entrega.** *O link público já expira em 30; a transportadora ainda precisa de alguns meses para reclamações, e os relatórios continuam contando entregas e status. Roda na própria API a cada hora: o `UPDATE` só pega linhas não anonimizadas, então várias instâncias podem rodar juntas.* (apagar a linha, que quebra relatórios; job separado ou cron, mais uma peça para subir)
 - **2026-10-02 — `delivery_events` como outbox, com um relay na API que publica no RabbitMQ.** *Publicar direto depois do commit perde a notificação se a API cair ou o RabbitMQ estiver fora; com o outbox o evento e a notificação são gravados juntos. `SKIP LOCKED` deixa várias instâncias rodarem o relay.* (publicar após o commit; tabela `outbox` separada, que duplicaria o evento)
@@ -58,7 +66,7 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-01 — JWT HS256 com papel no token.** *Simples para a etapa 1. Na etapa 3 passou a durar 15 min, com refresh rotativo* ([SECURITY.md](SECURITY.md) #14).
 - **2026-10-01 — Status muda só por evento, nunca por PATCH.** *Garante histórico completo para o rastreio público e auditoria.*
 - **2026-10-01 — Código de rastreio aleatório (`RS` + 10 caracteres sem 0/O/1/I).** *Legível por telefone e impossível de adivinhar a partir de outro código; o id sequencial nunca é público.*
-- **2026-10-01 — Uma única transportadora por instalação.** *Multi-tenant fica fora de escopo para manter o foco* ([PRD](PRD.md)).
+- **2026-10-01 — Uma única transportadora por instalação.** *Multi-tenant fica fora de escopo para manter o foco* ([PRD](PRD.md)). Substituída em 02/10: o projeto passou a ser um produto com várias transportadoras.
 - **2026-10-01 — Hot reload com air via `docker-compose.override.yml`.** *`docker compose up` já sobe o ambiente de desenvolvimento, sem make nem `-f`; a imagem de produção continua sendo o estágio final do Dockerfile.* (`make dev`, arquivo `docker-compose.dev.yml`)
 - **2026-10-01 — `failed` pode voltar para `in_transit`.** *Nova tentativa é comum em entrega; criar outra entrega quebraria o histórico e o link do cliente.*
 - **2026-10-01 — Sem foto de comprovante na v1.** *Evita upload (e seus riscos) até o fluxo principal estar pronto.*
@@ -89,7 +97,7 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
 ## Glossário
 
-- **Admin:** operador da transportadora.
+- **Transportadora (carrier):** empresa que usa o Rastreia; é o tenant. O papel `carrier` é de quem toca a transportadora (antes chamado de admin).
 - **Motorista (driver):** entregador; só vê as próprias entregas.
 - **Destinatário:** quem recebe; não tem conta, acompanha pelo código de rastreio.
 - **Evento:** registro de mudança de status de uma entrega.

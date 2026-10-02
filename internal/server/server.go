@@ -92,6 +92,7 @@ func New(d Deps) http.Handler {
 		})
 
 		r.With(limit("login", opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
+		r.With(limit("signup", opts.LoginRateLimit)).Post("/auth/signup", d.Users.SignUp)
 		r.With(limit("refresh", opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
 		r.With(limit("logout", opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
 		// Its own, tighter limit makes guessing tracking codes slow.
@@ -102,9 +103,14 @@ func New(d Deps) http.Handler {
 			r.With(tracking).Delete("/public/tracking/{code}/push", d.Push.Unsubscribe)
 		}
 
-		r.Group(func(r chi.Router) {
-			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
+		r.With(d.Tokens.Authenticate).Get("/me", d.Users.Me)
 
+		// Everything below is scoped to the caller's carrier: the services
+		// filter by the carrier in the token and answer 404 for anything else.
+		r.Group(func(r chi.Router) {
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleCarrier))
+
+			r.Get("/summary", d.Deliveries.Summary)
 			r.Get("/drivers", d.Users.ListDrivers)
 			r.Post("/drivers", d.Users.CreateDriver)
 
@@ -117,7 +123,7 @@ func New(d Deps) http.Handler {
 		// Drivers reach only their own deliveries here; the service answers 404
 		// for anyone else's.
 		r.Group(func(r chi.Router) {
-			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin, auth.RoleDriver))
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleCarrier, auth.RoleDriver))
 
 			r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
 			r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)

@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 7 — Deploy na AWS**
+**Etapa atual: 6.5 — Produto (várias transportadoras)**
 
 ## Etapa 1 — Base da API ✅
 
@@ -78,6 +78,19 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] RabbitMQ e worker de e-mail quando o status muda (outbox, retry e fila de falhas)
 - [x] Notificação no celular por Web Push (PWA instalável), como segundo consumidor do mesmo evento
 - [x] Política de retenção e anonimização de dados (#27)
+
+## Etapa 6.5 — Produto (várias transportadoras)
+
+O "admin" vira a transportadora, e o projeto passa a funcionar como um produto que várias transportadoras usam ([PRD](PRD.md) RF13 a RF17).
+
+- [x] Transportadora como tenant: tabela `carriers`, `carrier_id` em usuários e entregas, papel `admin` vira `carrier` (#6)
+- [x] Todas as rotas autenticadas filtram pela transportadora do token; o que é de outra responde 404 (#6)
+- [x] `POST /auth/signup`: cadastro da transportadora com CNPJ opcional (inclusive o alfanumérico), já logando
+- [x] `GET /me` com o usuário e a transportadora, `GET /summary` com os números do painel
+- [x] WebSocket do painel por transportadora e nome da transportadora no rastreio público
+- [ ] Página inicial com as três entradas (transportadora, motorista, rastreio)
+- [ ] Cadastro e login da transportadora, login do motorista, cada um na sua tela
+- [ ] Painel da transportadora com visão geral
 
 ## Etapa 7 — Deploy na AWS
 

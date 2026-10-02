@@ -37,9 +37,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 	if key, sent := r.Header["Idempotency-Key"]; sent {
-		d, replayed, err = h.svc.CreateIdempotent(r.Context(), actor.UserID, key[0], in)
+		d, replayed, err = h.svc.CreateIdempotent(r.Context(), actor, key[0], in)
 	} else {
-		d, err = h.svc.Create(r.Context(), actor.UserID, in)
+		d, err = h.svc.Create(r.Context(), actor, in)
 	}
 	if err != nil {
 		httpx.WriteError(w, err)
@@ -52,7 +52,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	list, err := h.svc.List(r.Context(), listInput(r))
+	actor, ok := actorFrom(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.svc.List(r.Context(), actor.CarrierID, listInput(r))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -143,12 +147,30 @@ func actorFrom(w http.ResponseWriter, r *http.Request) (auth.Claims, bool) {
 	return c, ok
 }
 
+// Summary feeds the carrier's dashboard.
+func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
+	actor, ok := actorFrom(w, r)
+	if !ok {
+		return
+	}
+	sum, err := h.svc.Summary(r.Context(), actor.CarrierID)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, sum)
+}
+
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	actor, ok := actorFrom(w, r)
+	if !ok {
+		return
+	}
 	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
-	d, err := h.svc.Get(r.Context(), id)
+	d, err := h.svc.Get(r.Context(), actor, id)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -157,6 +179,10 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	actor, ok := actorFrom(w, r)
+	if !ok {
+		return
+	}
 	id, ok := pathID(w, r)
 	if !ok {
 		return
@@ -166,7 +192,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	d, err := h.svc.Update(r.Context(), id, in)
+	d, err := h.svc.Update(r.Context(), actor, id, in)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
