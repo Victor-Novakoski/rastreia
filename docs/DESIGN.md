@@ -74,4 +74,27 @@ Três superfícies, uma identidade visual:
 | `delivered` | Entregue | sucesso |
 | `failed` | Não entregue | erro |
 
-Paleta, tipografia e componentes concretos serão definidos no início da etapa 3 e registrados aqui.
+### Paleta
+Tokens em `web/src/index.css` (`@theme` do Tailwind). Componentes usam o nome semântico, nunca a cor crua.
+
+| Token | Cor | Uso |
+| --- | --- | --- |
+| `brand-700` / `brand-800` | `#4338ca` / `#3730a3` | Botão principal, links, cabeçalho |
+| `neutral-fg` / `neutral-bg` | `#475569` / `#f1f5f9` | `pending` |
+| `info-fg` / `info-bg` | `#0369a1` / `#e0f2fe` | `picked_up` |
+| `highlight-fg` / `highlight-bg` | `#1d4ed8` / `#dbeafe` | `in_transit` |
+| `success-fg` / `success-bg` | `#15803d` / `#dcfce7` | `delivered` |
+| `danger-fg` / `danger-bg` | `#b91c1c` / `#fee2e2` | `failed`, erros de formulário |
+
+Fundo `slate-50`, texto `slate-900` e texto secundário `slate-600`. Todos os pares de texto e fundo passam no contraste AA.
+
+### Tipografia
+Fonte do sistema (`system-ui`): nada para baixar, o que ajuda o rastreio público a abrir rápido em rede ruim. Código de rastreio em fonte monoespaçada, com espaçamento entre letras.
+
+### Componentes
+- `StatusBadge`: status com ícone, texto e cor; tamanho `lg` no topo do rastreio.
+- `Button`: altura mínima de 44 px; com `loading`, fica desabilitado e mostra o indicador.
+- `Spinner`: indicador de carregamento com texto para leitor de tela.
+- `PublicLayout`: cabeçalho e coluna estreita das páginas públicas.
+
+Ícones são SVG próprios em `StatusIcon`, sem biblioteca.

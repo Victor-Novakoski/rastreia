@@ -1,0 +1,63 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { describe, expect, it, vi } from 'vitest'
+import { TrackingPage } from './TrackingPage'
+
+function renderAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/rastreio/:code" element={<TrackingPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function mockFetch(status: number, body: unknown) {
+  return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
+  )
+}
+
+describe('TrackingPage', () => {
+  it('mostra status, nome e histórico do mais recente para o mais antigo', async () => {
+    const fetch = mockFetch(200, {
+      tracking_code: 'RS7K2M9QXA4P',
+      status: 'in_transit',
+      recipient_first_name: 'Maria',
+      updated_at: '2026-10-01T15:00:00Z',
+      events: [
+        { status: 'pending', created_at: '2026-10-01T10:00:00Z' },
+        { status: 'picked_up', created_at: '2026-10-01T12:00:00Z' },
+        { status: 'in_transit', created_at: '2026-10-01T15:00:00Z' },
+      ],
+    })
+    renderAt('/rastreio/rs7k2m9qxa4p')
+
+    expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/public\/tracking\/RS7K2M9QXA4P$/), expect.anything())
+    const items = screen.getAllByRole('listitem').map((li) => li.textContent)
+    expect(items[0]).toContain('Em rota')
+    expect(items[2]).toContain('Aguardando coleta')
+  })
+
+  it('404 vira "não encontramos"', async () => {
+    mockFetch(404, { error: 'not found' })
+    renderAt('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByText('Não encontramos essa entrega')).toBeInTheDocument()
+  })
+
+  it('código malformado não chama a API', async () => {
+    const fetch = mockFetch(200, {})
+    renderAt('/rastreio/abc')
+    expect(await screen.findByText('Não encontramos essa entrega')).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('429 pede para esperar e oferece tentar de novo', async () => {
+    mockFetch(429, { error: 'too many requests' })
+    renderAt('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByText(/Muitas consultas seguidas/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument()
+  })
+})

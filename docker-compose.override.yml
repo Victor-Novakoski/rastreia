@@ -1,5 +1,5 @@
 # Carregado automaticamente pelo docker compose: a API roda com air e
-# recompila a cada alteração. A imagem de produção é o estágio final do Dockerfile.
+# recompila a cada alteração, e o front roda no Vite com hot reload. A imagem de produção é o estágio final do Dockerfile.
 services:
   api:
     image: rastreia-api-dev
@@ -11,6 +11,21 @@ services:
       - go-mod:/go/pkg/mod
       - go-build:/root/.cache/go-build
 
+  web:
+    image: node:22-alpine
+    working_dir: /web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/web
+      - web-node-modules:/web/node_modules
+    depends_on:
+      - api
+
 volumes:
+  web-node-modules:
   go-mod:
   go-build:
