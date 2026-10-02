@@ -4,16 +4,17 @@
 
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
-> Projeto em construção. Etapas prontas: base da API, segurança da base e eventos de status com rastreio público. Próxima: front-end.
+> Projeto em construção. Etapas prontas: base da API, segurança da base, eventos de status com rastreio público, CI e front-end (painel admin, app do motorista e rastreio público).
 
 ## Stack
 
 - **API:** Go, chi, pgx + sqlc, golang-migrate, Viper, JWT
+- **Front:** React, TypeScript, Vite, Tailwind CSS, React Router
 - **Banco:** PostgreSQL
-- **Testes:** testing + testify; integração com Postgres real via testcontainers
+- **Testes:** testing + testify; integração com Postgres real via testcontainers; Vitest + Testing Library no front
 - **Infra:** Docker e Docker Compose
 
-Próximas etapas: eventos de status e rastreio público, front-end em React + TypeScript, CI no GitHub Actions, tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
+Próximas etapas: tempo real com WebSocket e Redis, fila de notificações com RabbitMQ e deploy na AWS.
 
 ## Documentação
 
@@ -35,7 +36,7 @@ Precisa só de Docker.
 docker compose up --build
 ```
 
-A API sobe em `http://localhost:8080` e já cria um admin de teste:
+A API sobe em `http://localhost:8080` e o front em `http://localhost:5173` (login em `/entrar`, painel em `/admin`, app do motorista em `/motorista` e rastreio público em `/rastreio`). A API já cria um admin de teste:
 
 | E-mail | Senha |
 | --- | --- |
@@ -60,6 +61,15 @@ air
 ```bash
 make test        # unitários + integração (sobe um Postgres temporário no Docker)
 make test-short  # só os unitários, sem Docker
+```
+
+No front (`web/`), com Node 22:
+
+```bash
+npm ci
+npm run dev        # Vite em http://localhost:5173 (a API precisa estar no ar)
+npm test           # Vitest
+npm run lint && npm run typecheck
 ```
 
 ## Exemplo de uso
@@ -97,6 +107,7 @@ A especificação OpenAPI completa fica em [`api/openapi.yaml`](api/openapi.yaml
 | --- | --- | --- |
 | GET | `/health` | público |
 | POST | `/auth/login` | admin e motorista |
+| POST | `/auth/refresh`, `/auth/logout` | admin e motorista (cookie de sessão) |
 | GET, POST | `/drivers` | admin |
 | GET, POST | `/deliveries` | admin |
 | GET, PATCH | `/deliveries/{id}` | admin |
@@ -118,6 +129,7 @@ internal/
   user/               motoristas e admin inicial
   httpx/, apperr/     helpers de HTTP e erros
   testdb/             Postgres temporário para os testes de integração
+web/                  front-end em React: rastreio público, painel admin e app do motorista
 ```
 
 ## Decisões

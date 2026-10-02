@@ -38,6 +38,17 @@ type IdempotencyKey struct {
 	CreatedAt   time.Time
 }
 
+type RefreshToken struct {
+	ID        int64
+	UserID    int64
+	FamilyID  string
+	TokenHash []byte
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	RevokedAt *time.Time
+	CreatedAt time.Time
+}
+
 type User struct {
 	ID           int64
 	Name         string

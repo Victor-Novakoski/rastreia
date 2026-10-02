@@ -4,13 +4,31 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 1, 1.5 e 2 concluídas; próxima é a 3 (front-end). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 3 (front-end) concluída. Próximo: Trivy (etapa 4) e tempo real (etapa 5). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
-- **Atualizado em:** 01/10/2026.
+- **Atualizado em:** 02/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-02 — CSP do front numa `<meta>` injetada no build.** *O front vai ser estático numa CDN, e a política acompanha o HTML sem depender da configuração do servidor; só `frame-ancestors` precisa ir no cabeçalho.* (CSP só no cabeçalho da CDN; nonce, que exige servidor)
+
+- **2026-10-02 — App do motorista lê até 100 entregas de `/me/deliveries` e acha a entrega na lista.** *A API não tem `GET /me/deliveries/{id}`, e 100 cobre o dia de um motorista; entregas antigas somem da lista, o que não atrapalha.* (rota nova na API)
+- **2026-10-02 — No app do motorista, 409 de uma repetição conta como sucesso se o status já é o pedido.** *Com sinal ruim, o primeiro envio pode chegar e a resposta não; o motorista toca de novo e não deve ver erro.*
+
+- **2026-10-02 — TanStack Query no painel.** *Lista, detalhe e formulários compartilham dados e precisam invalidar o cache depois de cada mudança; escrever isso à mão seria mais código e mais bug.* (fetch com useEffect)
+- **2026-10-02 — Access token só em memória, renovado no 401.** *Recarregar a página chama `/auth/refresh` com o cookie; um 401 renova uma vez e repete a chamada. Os refreshes simultâneos dividem a mesma requisição, porque usar o mesmo refresh token duas vezes derruba a sessão.* (`localStorage`, que o XSS lê; renovar por timer)
+- **2026-10-02 — Rotas do front em português: `/entrar`, `/admin/entregas`, `/admin/motoristas`, `/motorista`, `/rastreio`.** *São as URLs que o usuário vê.*
+
+- **2026-10-02 — Refresh token opaco no banco (hash SHA-256), com rotação e família.** *Dá para revogar (logout, reuso) e o banco vazado não entrega tokens usáveis; reuso derruba a família inteira.* (refresh em JWT, sem estado: não dá para revogar)
+- **2026-10-02 — Sem período de tolerância para refresh simultâneo.** *Mais simples e mais seguro; o front garante uma renovação por vez. Duas abas renovando ao mesmo tempo podem derrubar a sessão: se virar problema, entra uma tolerância de poucos segundos.*
+- **2026-10-02 — Cookie `rastreia_refresh` com `Path=/auth` e `SameSite=Strict`, mais checagem de `Origin`.** *O cookie só vai para as rotas de sessão, e o `Origin` fecha o CSRF. Exige front e API no mesmo site.* (prefixo `__Host-`, que obriga `Path=/`)
+- **2026-10-02 — Front em `web/`, no mesmo repositório.** *Um PR muda API e tela juntos, e a CI confere os dois.* (repositório separado)
+- **2026-10-02 — Vite + React + TypeScript + Tailwind, com oxlint e Vitest.** *Stack padrão do mercado e rápida; oxlint veio no template do Vite e substitui o ESLint.* (Next.js: sem SSR necessário, o front é estático numa CDN)
+- **2026-10-02 — React Router, sem biblioteca de estado ou de requisições por enquanto.** *Uma página pública só pede um `fetch`; TanStack Query entra se o painel precisar de cache.* (RULES: nada "para o futuro")
+- **2026-10-02 — Fonte do sistema e ícones SVG próprios.** *Página pública abre rápido em rede ruim e não depende de CDN externa, o que facilita a CSP.* (Inter via Google Fonts, lucide-react)
+- **2026-10-02 — Front chama a API direto pela `VITE_API_URL`.** *O CORS já aceita `http://localhost:5173`; em produção o front fica na CDN e a API em outro domínio.* (proxy do Vite)
 
 - **2026-10-01 — Conventional Commits e CI no GitHub Actions.** *Histórico legível e todo PR conferido (lint, sqlc, testes, imagem, govulncheck, gitleaks, título do PR).* Actions fixadas por hash do commit.
 - **2026-10-01 — IP do cliente atrás de proxy = último valor do `X-Forwarded-For`.** *O `middleware.RealIP` do chi usa o primeiro, que o cliente pode falsificar (achado pelo golangci-lint).* (chi RealIP, httprate KeyByRealIP)
@@ -19,7 +37,7 @@ Formato: data — decisão. *Por quê.* (alternativas descartadas)
 - **2026-10-01 — Go com chi, sem framework.** *Biblioteca padrão + roteador leve deixa o código explícito e fácil de testar.* (Gin, Echo, Fiber)
 - **2026-10-01 — sqlc + pgx em vez de ORM.** *SQL escrito à mão e revisável, código tipado gerado, parâmetros sempre — elimina SQL injection por construção.* (GORM, ent)
 - **2026-10-01 — Migrations embutidas e aplicadas ao subir a API.** *Um binário só, sem passo manual; o banco sempre fica na versão do código.*
-- **2026-10-01 — JWT HS256 com papel no token.** *Simples para a etapa 1. Será trocado por access token curto + refresh rotativo na etapa 3* ([SECURITY.md](SECURITY.md) #14).
+- **2026-10-01 — JWT HS256 com papel no token.** *Simples para a etapa 1. Na etapa 3 passou a durar 15 min, com refresh rotativo* ([SECURITY.md](SECURITY.md) #14).
 - **2026-10-01 — Status muda só por evento, nunca por PATCH.** *Garante histórico completo para o rastreio público e auditoria.*
 - **2026-10-01 — Código de rastreio aleatório (`RS` + 10 caracteres sem 0/O/1/I).** *Legível por telefone e impossível de adivinhar a partir de outro código; o id sequencial nunca é público.*
 - **2026-10-01 — Uma única transportadora por instalação.** *Multi-tenant fica fora de escopo para manter o foco* ([PRD](PRD.md)).

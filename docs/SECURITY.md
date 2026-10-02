@@ -2,7 +2,7 @@
 
 Como o Rastreia trata cada risco, o que já está feito e o que falta. As tarefas pendentes estão em [TASKS.md](TASKS.md) e o checklist rápido para cada mudança está em [RULES.md](RULES.md#3-segurança).
 
-Situação revisada em 01/10/2026, depois da etapa 2 (eventos e rastreio público).
+Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 
 **Legenda:** ✅ feito · 🟡 parcial · 🔴 pendente · ⚪ ainda não se aplica (regra definida para quando se aplicar)
 
@@ -11,25 +11,25 @@ Situação revisada em 01/10/2026, depois da etapa 2 (eventos e rastreio públic
 | # | Risco | Situação | Prioridade | O que é |
 | --- | --- | --- | --- | --- |
 | 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 | Senhas, chaves e segredos vazando por arquivo commitado, imagem Docker ou valor padrão usado em produção. |
-| 2 | Validação no front-end | ⚪ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
+| 2 | Validação no front-end | ✅ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
 | 3 | Validação no back-end | ✅ | — | A API confere tipo, formato e tamanho de tudo que recebe. É a validação que realmente protege. |
 | 4 | SQL Injection | ✅ | — | Texto enviado pelo usuário vira parte do comando SQL e consegue ler ou apagar dados do banco. |
 | 5 | Autenticação fraca | 🟡 | Baixa | Senha fraca ou previsível, login que dá pistas, ou credencial padrão que nunca foi trocada. |
 | 6 | IDOR | ✅ | — | Trocar o id na URL (ex.: /deliveries/2 por /deliveries/3) e acessar dado de outra pessoa. |
 | 7 | Senhas no banco | ✅ | — | Guardar a senha como texto no banco: se o banco vazar, todas as senhas vazam junto. |
 | 8 | Força bruta | ✅ | — | Tentar milhares de senhas seguidas até acertar. |
-| 9 | Envio duplicado | 🟡 | Etapa 3 (front) | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
-| 10 | CSRF | ⚪ | — | Outro site faz o navegador do usuário logado enviar uma ação para a API sem ele perceber. |
+| 9 | Envio duplicado | ✅ | — | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
+| 10 | CSRF | ✅ | — | Outro site faz o navegador do usuário logado enviar uma ação para a API sem ele perceber. |
 | 11 | Upload sem validação | ⚪ | — | Arquivo malicioso disfarçado (ex.: script com extensão .jpg) ou grande demais para o servidor. |
 | 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
 | 13 | Dependências vulneráveis | 🟡 | Média | Biblioteca de terceiros com falha de segurança conhecida. |
-| 14 | Tokens | 🟡 | Média | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
+| 14 | Tokens | ✅ | — | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
 | 15 | Rate limit | 🟡 | Etapa 5 (Redis) | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
 | 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
 | 17 | SSRF | ⚪ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
-| 18 | Cookies inseguros | ⚪ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
+| 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
 | 19 | CORS | ✅ | — | Regra do navegador que diz quais sites podem chamar a API. |
-| 20 | XSS | ⚪ | Etapa 3 | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
+| 20 | XSS | ✅ | — | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
 | 21 | Headers de segurança | ✅ | — | Cabeçalhos HTTP que mandam o navegador se proteger (ex.: não abrir a página dentro de iframe, só usar HTTPS). |
 | 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 | Conexões lentas ou requisições enormes que prendem o servidor e derrubam a API. |
 | 23 | Falsificação de IP | ✅ | — | Cliente mente o IP pelo cabeçalho X-Forwarded-For para escapar do rate limit. |
@@ -55,9 +55,9 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 **Falta**
 - Em produção (AWS), segredos no Secrets Manager ou SSM Parameter Store, nunca em arquivo.
 
-## 2. Validação no front-end — ⚪
+## 2. Validação no front-end — ✅
 
-Entra na etapa 3. Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
+Feito no painel admin: campos com `required`, `type="email"` e `maxLength` iguais aos limites da API, e os `fields` do 422 traduzidos e mostrados embaixo de cada campo (`web/src/lib/fields.ts`). Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
 
 ## 3. Validação no back-end — ✅
 
@@ -114,13 +114,13 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - A chave é reservada na mesma transação que cria a entrega, então duas requisições simultâneas com a mesma chave criam uma entrega só (teste de integração com 10 requisições em paralelo).
 - Eventos de status: transição repetida (ex.: `picked_up` → `picked_up`) responde 409, então reenviar não duplica histórico. Dois eventos simultâneos na mesma entrega: só um é aplicado, o outro recebe 409 (a troca de status confere o status anterior no `UPDATE`).
 
-**Front (etapa 3):** botão desabilitado e com indicador de carregamento enquanto a requisição não volta, e uma `Idempotency-Key` gerada por formulário.
+**Front (feito):** o `Button` fica desabilitado e com indicador enquanto a requisição não volta, e o formulário ignora um segundo envio. O formulário de nova entrega gera uma `Idempotency-Key` (`crypto.randomUUID()`), mantida se a rede falhar e trocada quando a API responde com erro.
 
-## 10. CSRF — ⚪
+## 10. CSRF — ✅
 
-**Hoje não se aplica:** a autenticação é por cabeçalho `Authorization: Bearer`, que o navegador não envia sozinho, e a API não usa cookies.
+As rotas que alteram dados usam `Authorization: Bearer`, que o navegador não envia sozinho. Só `/auth/refresh` e `/auth/logout` dependem do cookie, e elas têm duas barreiras: o cookie é `SameSite=Strict` e restrito a `Path=/auth`, e a requisição precisa de um cabeçalho `Origin` da lista `CORS_ORIGINS` (sem `Origin`, 403).
 
-**Se o refresh token for para cookie (item 14):** `SameSite=Strict`, cookie restrito ao caminho `/auth/refresh` e verificação do cabeçalho `Origin` contra a lista de origens permitidas. Se algum dia a sessão inteira for por cookie, token anti-CSRF obrigatório nas rotas que alteram dados.
+Se algum dia a sessão inteira for por cookie, token anti-CSRF obrigatório nas rotas que alteram dados.
 
 ## 11. Upload sem validação — ⚪
 
@@ -157,19 +157,15 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 **Falta**
 - Varredura da imagem Docker (Trivy) na CI.
 
-## 14. Tokens mal otimizados — 🟡
+## 14. Tokens mal otimizados — ✅
 
-**Feito:** algoritmo fixo, expiração, claims mínimos (`sub`, `role`, `iat`, `exp`), segredo com tamanho mínimo.
+**Feito**
+- Access token JWT de 15 min (`JWT_TTL`), com algoritmo fixo, claims mínimos (`sub`, `role`, `iat`, `exp`) e `iss`/`aud` validados.
+- Refresh token opaco (32 bytes aleatórios) no cookie `rastreia_refresh`, salvo no banco **só como hash** (SHA-256), válido por `REFRESH_TTL` (7 dias) sem uso.
+- Rotação: cada uso marca o token como usado e entrega o próximo da mesma família. Reuso de um token já trocado revoga a família inteira (sinal de roubo). Dois refreshes simultâneos com o mesmo token também contam como reuso.
+- `POST /auth/logout` revoga a sessão.
 
-**Problemas**
-- Token de 24h sem como revogar: motorista desligado continua com acesso por até 24h.
-- Sem `iss`/`aud`.
-
-**Plano**
-- Access token curto (15 min) no cabeçalho, guardado só em memória no front.
-- Refresh token opaco e aleatório, em cookie `HttpOnly`, salvo **com hash** no banco, trocado a cada uso (rotação) e revogável (logout, troca de senha, desativação do usuário).
-- Reuso de refresh token já trocado revoga toda a sessão (sinal de roubo).
-- Adicionar `iss` e `aud` e validá-los.
+**Falta:** revogar as sessões ao trocar a senha ou desativar o usuário, quando essas funções existirem. No front, o access token fica só em memória (item 20).
 
 ## 15. Rate limit — 🟡
 
@@ -199,19 +195,25 @@ A API não faz requisições para URLs informadas pelo usuário. Se passar a faz
 - Timeout curto e sem seguir redirecionamentos.
 - Na AWS, IMDSv2 obrigatório.
 
-## 18. Cookies inseguros — ⚪
+## 18. Cookies inseguros — ✅
 
-Não há cookies hoje. Qualquer cookie que for criado: `HttpOnly`, `Secure`, `SameSite=Strict` (ou `Lax` com justificativa), `Path` restrito, prefixo `__Host-` quando possível e validade curta.
+O único cookie é o `rastreia_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/auth`, `Secure` sempre (Chrome e Firefox aceitam cookie `Secure` em `http://localhost`, então o desenvolvimento não precisa de HTTPS) e validade igual à do refresh token. Não dá para usar o prefixo `__Host-`, que exige `Path=/`.
+
+**Requisito de deploy:** front e API no mesmo site (ex.: `app.dominio` e `api.dominio`), senão o `SameSite=Strict` impede o envio do cookie.
 
 ## 19. CORS — ✅
 
 - Lista exata de origens vinda de `CORS_ORIGINS` (padrão: `http://localhost:5173`, o Vite), sem `*`. Em produção só aceita `https`.
 - Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
-- Sem `credentials` por enquanto; entra só se o refresh por cookie exigir (item 18).
+- `credentials` liberado, porque o refresh token vai no cookie (item 18). Por isso a lista de origens nunca pode ter `*`.
 
-## 20. XSS — ⚪
+## 20. XSS — ✅
 
-Etapa 3. React já escapa o conteúdo; proibido `dangerouslySetInnerHTML` com dado vindo da API. Content-Security-Policy restritiva no front. O token de acesso fica em memória, não em `localStorage`.
+- React escapa todo texto vindo da API. O oxlint barra `dangerouslySetInnerHTML` (`react/no-danger`), links `javascript:` e `target="_blank"` sem `rel="noopener noreferrer"`.
+- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL`. No `npm run dev` ela fica de fora, porque o hot reload do Vite usa script inline.
+- O access token fica em memória, não em `localStorage`; o refresh token está num cookie `HttpOnly`. Um XSS não leva a sessão embora.
+
+**Deploy (etapa 7):** `frame-ancestors` não funciona em `<meta>`, então a CDN do front precisa mandar `Content-Security-Policy: frame-ancestors 'none'` (ou `X-Frame-Options: DENY`) no cabeçalho.
 
 ## 21. Headers de segurança — ✅
 

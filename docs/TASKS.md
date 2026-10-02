@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 3 — Front-end**
+**Etapa atual: fechar a 4 (Trivy) e seguir para a 5 — Tempo real**
 
 ## Etapa 1 — Base da API ✅
 
@@ -43,16 +43,18 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Testes de integração com Postgres real (testcontainers)
 - [x] `Idempotency-Key` no `POST /deliveries` (#9)
 
-## Etapa 3 — Front-end (React + TypeScript)
+## Etapa 3 — Front-end (React + TypeScript) ✅
 
-- [ ] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
-- [ ] Access token curto + refresh token rotativo em cookie `HttpOnly` (#10, #14, #18)
-- [ ] CORS com lista de origens por variável de ambiente (#19)
-- [ ] Painel admin
-- [ ] App do motorista (mobile first)
-- [ ] Página pública de rastreio
-- [ ] Validação nos formulários e bloqueio durante envio (#2, #9)
-- [ ] CSP e regras contra XSS (#20)
+- [x] Base do front em `web/` (Vite, React, TypeScript, Tailwind, Vitest), no `docker compose up` e na CI
+- [x] Definir paleta, tipografia e componentes em [DESIGN.md](DESIGN.md)
+- [x] Access token curto + refresh token rotativo em cookie `HttpOnly` na API (#10, #14, #18)
+- [x] Front renova o access token pelo `/auth/refresh` e o guarda só em memória (#14, #20)
+- [x] CORS com lista de origens por variável de ambiente, com `credentials` para o cookie (#19)
+- [x] Painel admin: login, entregas (filtro, paginação, criação, edição, troca de status) e motoristas
+- [x] App do motorista (mobile first): lista das entregas, mapa e troca de status com um toque
+- [x] Página pública de rastreio
+- [x] Validação nos formulários e bloqueio durante envio (#2, #9)
+- [x] CSP e regras contra XSS (#20)
 
 ## Etapa 4 — CI (GitHub Actions) 🟡
 
@@ -63,6 +65,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Template de PR, `.editorconfig` e licença MIT
 - [ ] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
 - [ ] Varredura da imagem Docker (Trivy)
+- [ ] Marcar o check do front como obrigatório no ruleset
 - [x] Badge da CI no README
 
 ## Etapa 5 — Tempo real
@@ -77,6 +80,13 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 
 ## Etapa 7 — Deploy na AWS
 
+- [ ] Cabeçalho `frame-ancestors 'none'` na CDN do front (#20)
 - [ ] Infra (banco em sub-rede privada, segredos no Secrets Manager/SSM, HTTPS) (#1, #16, #25)
 - [ ] Usuário do banco com privilégio mínimo e backups criptografados (#25)
 - [ ] Alertas de falhas de login e erros 5xx (#26)
+
+## Sem etapa
+
+Ideias que surgiram no caminho e ainda não têm lugar.
+
+- [ ] Busca de entrega por código ou destinatário no painel (precisa de filtro na API)
