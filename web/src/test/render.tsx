@@ -47,4 +47,4 @@ export function renderApp(path: string, extra?: ReactNode) {
   )
 }
 
-export const adminSession = { token: 'access-token', role: 'admin', expires_in: 900 }
+export const carrierSession = { token: 'access-token', role: 'carrier', expires_in: 900 }

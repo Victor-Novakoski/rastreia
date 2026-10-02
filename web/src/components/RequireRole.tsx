@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router'
-import { homeFor, useAuth } from '../lib/auth'
+import { homeFor, loginFor, useAuth } from '../lib/auth'
 import type { Role } from '../lib/session'
 import { Loading } from './States'
 
@@ -18,7 +18,7 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
       </div>
     )
   }
-  if (state.status === 'anonymous') return <Navigate to="/entrar" replace />
+  if (state.status === 'anonymous') return <Navigate to={loginFor(role)} replace />
   if (state.session.role !== role) return <Navigate to={homeFor(state.session.role)} replace />
   return children
 }

@@ -4,7 +4,7 @@
 
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
-> Projeto em construção. Etapas prontas: base da API, segurança da base, eventos de status com rastreio público, CI e front-end (painel admin, app do motorista e rastreio público).
+> Projeto em construção. Etapas prontas: base da API, segurança, eventos de status com rastreio público, front-end, CI, tempo real, notificações e várias transportadoras (cada uma com seus dados, cadastro aberto e página inicial).
 
 ## Stack
 
@@ -39,7 +39,7 @@ Precisa só de Docker.
 docker compose up --build
 ```
 
-A API sobe em `http://localhost:8080` e o front em `http://localhost:5173` (login em `/entrar`, painel em `/admin`, app do motorista em `/motorista` e rastreio público em `/rastreio`). A API já cria um admin de teste:
+A API sobe em `http://localhost:8080` e o front em `http://localhost:5173`. A página inicial leva a cada área: cadastro e painel da transportadora (`/transportadora`), app do motorista (`/motorista`) e rastreio público (`/rastreio`). Qualquer pessoa pode cadastrar uma transportadora; a API também cria uma "Transportadora Demo" para testar:
 
 | E-mail | Senha |
 | --- | --- |
@@ -143,7 +143,7 @@ internal/
   user/               cadastro da transportadora, motoristas e /me
   httpx/, apperr/     helpers de HTTP e erros
   testdb/             Postgres temporário para os testes de integração
-web/                  front-end em React: rastreio público, painel admin e app do motorista
+web/                  front-end em React: página inicial, painel da transportadora, app do motorista e rastreio público
 ```
 
 ## Decisões

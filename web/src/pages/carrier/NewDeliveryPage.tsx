@@ -24,7 +24,7 @@ export function NewDeliveryPage() {
     mutationFn: (input: DeliveryInput) => createDelivery(api, input, key),
     onSuccess: (d) => {
       void queryClient.invalidateQueries({ queryKey: ['deliveries'] })
-      navigate(`/admin/entregas/${d.id}`, { state: { created: true } })
+      navigate(`/transportadora/entregas/${d.id}`, { state: { created: true } })
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status !== 0) setKey(crypto.randomUUID())
@@ -34,7 +34,7 @@ export function NewDeliveryPage() {
 
   return (
     <div className="max-w-xl">
-      <Link to="/admin/entregas" className="text-sm font-medium text-brand-700 hover:underline">
+      <Link to="/transportadora/entregas" className="text-sm font-medium text-brand-700 hover:underline">
         ← Entregas
       </Link>
       <h1 className="mt-2 text-2xl font-bold">Nova entrega</h1>

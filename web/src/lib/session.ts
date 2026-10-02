@@ -1,6 +1,6 @@
 import { ApiError, request } from './api'
 
-export type Role = 'admin' | 'driver'
+export type Role = 'carrier' | 'driver'
 export type Session = { token: string; role: Role }
 
 type SessionResponse = { token: string; role: Role; expires_in: number }
@@ -33,6 +33,20 @@ export async function loginRequest(email: string, password: string): Promise<Ses
     body: { email, password },
     withCredentials: true,
   })
+  return toSession(res)
+}
+
+export type SignUpInput = {
+  carrier_name: string
+  document?: string
+  name: string
+  email: string
+  password: string
+}
+
+/** Cria a transportadora e já devolve a sessão de quem a cadastrou, como o login. */
+export async function signUpRequest(input: SignUpInput): Promise<Session> {
+  const res = await request<SessionResponse>('/auth/signup', { method: 'POST', body: input, withCredentials: true })
   return toSession(res)
 }
 

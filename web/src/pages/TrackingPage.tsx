@@ -101,6 +101,11 @@ function TrackingDetails({ tracking, live }: { tracking: Tracking; live: boolean
   return (
     <>
       <h1 className="mt-1 text-2xl font-bold">Olá, {tracking.recipient_first_name}</h1>
+      {tracking.carrier_name && (
+        <p className="mt-1 text-slate-600">
+          Entrega feita por <span className="font-semibold text-slate-900">{tracking.carrier_name}</span>
+        </p>
+      )}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <StatusBadge status={tracking.status} size="lg" />
         {live && <LiveBadge />}

@@ -3,6 +3,8 @@ import type { Status } from './status'
 
 export type Tracking = {
   tracking_code: string
+  /** Quem está entregando, como na etiqueta. */
+  carrier_name: string
   status: Status
   recipient_first_name: string
   updated_at: string

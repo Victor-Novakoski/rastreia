@@ -33,7 +33,7 @@ export function DeliveryPage() {
 
   return (
     <div className="max-w-4xl">
-      <Link to="/admin/entregas" className="text-sm font-medium text-brand-700 hover:underline">
+      <Link to="/transportadora/entregas" className="text-sm font-medium text-brand-700 hover:underline">
         ← Entregas
       </Link>
       {!Number.isInteger(id) || id <= 0 || (delivery.error instanceof ApiError && delivery.error.status === 404) ? (

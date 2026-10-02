@@ -84,3 +84,10 @@ export function listDrivers(api: Api, signal?: AbortSignal) {
 export function createDriver(api: Api, input: { name: string; email: string; password: string }) {
   return api<Driver>('/drivers', { method: 'POST', body: input })
 }
+
+/** Números da visão geral: entregas por status nos últimos 30 dias e as sem motorista. */
+export type Summary = { since: string; by_status: Record<Status, number>; unassigned: number }
+
+export function getSummary(api: Api, signal?: AbortSignal) {
+  return api<Summary>('/summary', { signal })
+}

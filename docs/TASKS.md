@@ -88,9 +88,9 @@ O "admin" vira a transportadora, e o projeto passa a funcionar como um produto q
 - [x] `POST /auth/signup`: cadastro da transportadora com CNPJ opcional (inclusive o alfanumérico), já logando
 - [x] `GET /me` com o usuário e a transportadora, `GET /summary` com os números do painel
 - [x] WebSocket do painel por transportadora e nome da transportadora no rastreio público
-- [ ] Página inicial com as três entradas (transportadora, motorista, rastreio)
-- [ ] Cadastro e login da transportadora, login do motorista, cada um na sua tela
-- [ ] Painel da transportadora com visão geral
+- [x] Página inicial com as três entradas (transportadora, motorista, rastreio)
+- [x] Cadastro e login da transportadora, login do motorista, cada um na sua tela
+- [x] Painel da transportadora com visão geral, primeiros passos e o nome da transportadora no cabeçalho
 
 ## Etapa 7 — Deploy na AWS
 
