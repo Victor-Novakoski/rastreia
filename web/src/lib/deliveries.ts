@@ -14,6 +14,8 @@ export type Delivery = {
   created_at: string
   updated_at: string
   completed_at: string | null
+  /** Quando nome, e-mail e endereço foram apagados (retenção, SECURITY.md #27). */
+  anonymized_at: string | null
 }
 
 export type DeliveryEvent = {

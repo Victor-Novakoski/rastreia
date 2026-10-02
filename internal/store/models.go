@@ -19,6 +19,7 @@ type Delivery struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
+	AnonymizedAt   *time.Time
 }
 
 type DeliveryEvent struct {

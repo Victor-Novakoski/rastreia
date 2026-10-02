@@ -4,7 +4,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 6 (notificações) em andamento: e-mail e Web Push prontos; falta a retenção de dados (#27). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6 (notificações) concluída: e-mail e Web Push pelo RabbitMQ e retenção de dados. Próximo: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
 - **Atualizado em:** 02/10/2026.
 
@@ -12,6 +12,7 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-02 — Anonimizar 90 dias depois de concluída, sem apagar a entrega.** *O link público já expira em 30; a transportadora ainda precisa de alguns meses para reclamações, e os relatórios continuam contando entregas e status. Roda na própria API a cada hora: o `UPDATE` só pega linhas não anonimizadas, então várias instâncias podem rodar juntas.* (apagar a linha, que quebra relatórios; job separado ou cron, mais uma peça para subir)
 - **2026-10-02 — `delivery_events` como outbox, com um relay na API que publica no RabbitMQ.** *Publicar direto depois do commit perde a notificação se a API cair ou o RabbitMQ estiver fora; com o outbox o evento e a notificação são gravados juntos. `SKIP LOCKED` deixa várias instâncias rodarem o relay.* (publicar após o commit; tabela `outbox` separada, que duplicaria o evento)
 - **2026-10-02 — Retry com fila de espera (TTL de 30s) e fila de falhas depois de 5 tentativas.** *O RabbitMQ conta as tentativas no header `x-death`, sem estado no worker; mensagem inválida vai direto para a fila de falhas.* (requeue imediato, que vira loop; plugin de delayed message)
 - **2026-10-02 — Pelo menos uma vez, sem deduplicar no worker.** *Duplicar um e-mail raro é aceitável e deduplicar exigiria banco ou Redis no worker.*

@@ -20,6 +20,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/notify"
 	"github.com/Victor-Novakoski/rastreia/internal/push"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
+	"github.com/Victor-Novakoski/rastreia/internal/retention"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
@@ -82,6 +83,8 @@ func run() error {
 		defer pub.Close()
 		go notify.NewRelay(pool, pub).Run(ctx)
 	}
+
+	go retention.NewJob(queries, time.Duration(cfg.RetentionDays)*24*time.Hour).Run(ctx)
 
 	var pushes *push.Handler
 	if cfg.VAPIDPublicKey != "" {

@@ -10,6 +10,10 @@ import (
 )
 
 type Querier interface {
+	// AnonymizeDeliveries erases the recipient of deliveries finished before
+	// the given time, and the drivers' notes, which are free text and may name
+	// people. Returns how many deliveries were anonymized.
+	AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error)
 	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
 	// several API instances run the relay without sending an event twice.
 	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
