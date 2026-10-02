@@ -49,11 +49,11 @@ func New(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	if opts.TrustProxy {
-		r.Use(middleware.RealIP)
+		r.Use(trustedProxy)
 	}
 	r.Use(middleware.Logger, middleware.Recoverer)
 	r.Use(securityHeaders(opts.Production), corsPolicy(opts.CORSOrigins))
-	r.Use(rateLimit(opts.RateLimit, opts.TrustProxy))
+	r.Use(rateLimit(opts.RateLimit))
 	r.Use(middleware.Timeout(15 * time.Second))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -68,9 +68,9 @@ func New(d Deps) http.Handler {
 		_, _ = w.Write(api.OpenAPI)
 	})
 
-	r.With(rateLimit(opts.LoginRateLimit, opts.TrustProxy)).Post("/auth/login", d.Auth.Login)
+	r.With(rateLimit(opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
 	// Its own, tighter limit makes guessing tracking codes slow.
-	r.With(rateLimit(opts.TrackingRateLimit, opts.TrustProxy)).Get("/public/tracking/{code}", d.Deliveries.Track)
+	r.With(rateLimit(opts.TrackingRateLimit)).Get("/public/tracking/{code}", d.Deliveries.Track)
 
 	r.Group(func(r chi.Router) {
 		r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))

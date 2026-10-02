@@ -1,5 +1,7 @@
 # Rastreia
 
+[![CI](https://github.com/Victor-Novakoski/rastreia/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Victor-Novakoski/rastreia/actions/workflows/ci.yml)
+
 Plataforma de rastreio de entregas. A transportadora cadastra as entregas, o motorista atualiza o status pelo celular e o cliente acompanha tudo por um link público, em tempo real.
 
 > Projeto em construção. Etapas prontas: base da API, segurança da base e eventos de status com rastreio público. Próxima: front-end.

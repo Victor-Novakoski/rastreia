@@ -40,15 +40,10 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 	})
 }
 
-// rateLimit allows requests per minute per client IP. With trustProxy the IP
-// comes from X-Forwarded-For / X-Real-IP; without it, from the connection.
-func rateLimit(requests int, trustProxy bool) func(http.Handler) http.Handler {
-	key := httprate.KeyByIP
-	if trustProxy {
-		key = httprate.KeyByRealIP
-	}
-	return httprate.Limit(requests, time.Minute,
-		httprate.WithKeyFuncs(key),
+// rateLimit allows requests per minute per client IP, taken from
+// r.RemoteAddr (already rewritten by trustedProxy when the API is behind one).
+func rateLimit(requests int) func(http.Handler) http.Handler {
+	return httprate.LimitBy(requests, time.Minute, remoteIP,
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusTooManyRequests, "too many requests, try again later")
 		}),

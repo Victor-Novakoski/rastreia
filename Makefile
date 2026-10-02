@@ -18,9 +18,8 @@ test-short: ## Só os unitários
 cover:
 	go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
 
-lint:
-	go vet ./...
-	test -z "$$(gofmt -l .)"
+lint:      ## golangci-lint (mesma versão da CI), sem instalar nada
+	docker run --rm -v "$$PWD":/src -w /src golangci/golangci-lint:v2.14.0 golangci-lint run ./...
 
 sqlc:      ## Regenera internal/store a partir das queries (usa a imagem oficial, sem instalar nada)
 	docker run --rm -u $$(id -u):$$(id -g) -v "$$PWD":/src -w /src sqlc/sqlc:1.31.1 generate

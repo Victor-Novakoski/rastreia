@@ -107,3 +107,29 @@ func TestLoginRateLimit(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, login())
 	assert.Equal(t, http.StatusTooManyRequests, login())
 }
+
+func TestTrustedProxy_UsesRightmostForwardedFor(t *testing.T) {
+	h := newTestServer(Options{RateLimit: 1, TrustProxy: true})
+	// The load balancer appends the real client IP at the end; anything to
+	// its left was sent by the client and must not change the bucket.
+	require.Equal(t, http.StatusOK, get(h, "/health", map[string]string{"X-Forwarded-For": "1.1.1.1, 198.51.100.7"}).Code)
+	rec := get(h, "/health", map[string]string{"X-Forwarded-For": "2.2.2.2, 198.51.100.7"})
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code, "forged leftmost entries do not reset the limit")
+}
+
+func TestLastForwardedFor(t *testing.T) {
+	cases := map[string]string{
+		"":                      "",
+		"203.0.113.1":           "203.0.113.1",
+		"10.0.0.1, 203.0.113.1": "203.0.113.1",
+		"10.0.0.1, not-an-ip":   "",
+		" 2001:db8::1 ":         "2001:db8::1",
+	}
+	for header, want := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		if header != "" {
+			req.Header.Set("X-Forwarded-For", header)
+		}
+		assert.Equal(t, want, lastForwardedFor(req), header)
+	}
+}
