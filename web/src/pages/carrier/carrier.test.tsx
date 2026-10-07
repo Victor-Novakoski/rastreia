@@ -170,6 +170,30 @@ describe('painel', () => {
     expect(await screen.findByText('Nenhuma entrega com esse filtro.')).toBeInTheDocument()
   })
 
+  it('busca por código, nome ou e-mail vai para a API e apagar mostra todas', async () => {
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      // O handler só recebe o caminho; a query string está na última chamada.
+      'GET /deliveries': () => [200, calls.at(-1)!.path.includes('q=') ? [] : [delivery]],
+      'GET /drivers': () => [200, drivers],
+    })
+    renderApp('/transportadora/entregas?status=in_transit&page=2')
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+
+    const box = screen.getByRole('searchbox', { name: 'Buscar' })
+    await userEvent.type(box, '  joão {Enter}')
+    expect(await screen.findByText('Nenhuma entrega encontrada para “joão”.')).toBeInTheDocument()
+    const query = new URLSearchParams(calls.at(-1)!.path.split('?')[1])
+    expect(query.get('q')).toBe('joão')
+    expect(query.get('status')).toBe('in_transit')
+    expect(query.get('page')).toBe('1')
+    expect(box).toHaveFocus()
+
+    await userEvent.clear(box)
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+    expect(calls.at(-1)!.path).not.toContain('q=')
+  })
+
   it('nova entrega preenche pelo CEP, acha o ponto no mapa e manda Idempotency-Key', async () => {
     const calls = mockApi({
       'POST /auth/refresh': () => [200, carrierSession],

@@ -378,6 +378,12 @@ paths:
       security: [{ bearer: [] }]
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - name: q
+          in: query
+          description: |
+            Search: part of the tracking code or of the recipient's name or e-mail, ignoring case
+            and accents ("joao" finds "João"). Adds up with status.
+          schema: { type: string, maxLength: 100 }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses:

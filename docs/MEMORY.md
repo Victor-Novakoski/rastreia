@@ -4,13 +4,16 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 ## Estado atual
 
-- **Etapa:** 6.6 (endereço e rota do motorista) em andamento. Depois: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
+- **Etapa:** 6.7 (acabamento e revisão geral) em andamento. Depois: deploy na AWS (etapa 7). Ver [TASKS.md](TASKS.md).
 - **Referência de produto:** apps de entrega como Loggi e Envio Extra, dentro do escopo do [PRD](PRD.md).
-- **Atualizado em:** 02/10/2026.
+- **Atualizado em:** 07/10/2026.
 
 ## Decisões
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
+
+- **2026-10-07 — Busca do painel com `LIKE`, e os acentos tirados por `translate` no SQL e por um `Replacer` no Go.** *"joao" acha "João" sem instalar extensão no Postgres; a busca roda só sobre as entregas da transportadora, que o índice de `carrier_id` já separa, então não precisa de índice próprio.* (pg_trgm com índice GIN e unaccent, extensões a instalar no banco; busca no front, que só enxerga a página carregada)
+- **2026-10-07 — Busca ao apertar Enter, não a cada tecla.** *Uma chamada por busca; apagar o campo volta para a lista inteira na hora.* (busca com debounce, que dispara chamadas no meio da digitação)
 
 - **2026-10-02 — Endereço em colunas (CEP, rua, número...) e `address` montado pela API.** *O CEP preenche o resto, a rota agrupa pelo endereço e a etiqueta sai certa; `address` continua como a linha inteira para quem só quer ler, e entregas antigas ficam só com ela.* (JSON numa coluna, que o sqlc e as queries tratam pior; tabela de endereços, sem reuso que justifique)
 - **2026-10-02 — Coordenadas vêm do front, não de geocodificação na API.** *O formulário mostra o pino no mapa e a transportadora arrasta se cair errado; a API não chama serviço externo e os testes não dependem de rede.* (Nominatim na API ao criar, que exige fila para respeitar 1 req/s e não deixa corrigir)

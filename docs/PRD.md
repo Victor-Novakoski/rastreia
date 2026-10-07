@@ -74,6 +74,9 @@ O status só muda por **eventos** registrados pelo motorista (ou pela transporta
 - **RF20** O motorista monta a rota do dia bipando o QR-code de cada pacote (ou digitando o código). Pacote sem motorista passa a ser dele; de outro motorista é recusado.
 - **RF21** Pacotes no mesmo endereço viram uma parada. O sistema sugere uma ordem curta a partir de onde o motorista está e numera os pacotes de 1 a N; o motorista pode mudar a ordem como quiser.
 
+### Busca no painel
+- **RF22** A transportadora busca entregas por parte do código de rastreio ou do nome ou e-mail do destinatário, sem diferenciar maiúsculas de minúsculas nem acentos ("joao" acha "João"). A busca soma com o filtro de status.
+
 ## Requisitos não funcionais
 
 - **RNF01 Segurança:** seguir [SECURITY.md](SECURITY.md). Nenhuma etapa é concluída com item crítico pendente.

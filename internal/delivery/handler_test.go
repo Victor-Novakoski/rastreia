@@ -58,6 +58,9 @@ func TestHandler_CreateGetUpdate(t *testing.T) {
 
 	rec = do(t, r, http.MethodGet, "/deliveries?status=pending", "")
 	assert.Equal(t, http.StatusOK, rec.Code)
+
+	rec = do(t, r, http.MethodGet, "/deliveries?q=maria", "")
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestHandler_Errors(t *testing.T) {
@@ -74,6 +77,7 @@ func TestHandler_Errors(t *testing.T) {
 		{"bad id", http.MethodGet, "/deliveries/abc", "", http.StatusBadRequest},
 		{"missing", http.MethodGet, "/deliveries/99", "", http.StatusNotFound},
 		{"bad status filter", http.MethodGet, "/deliveries?status=lost", "", http.StatusUnprocessableEntity},
+		{"search too long", http.MethodGet, "/deliveries?q=" + strings.Repeat("a", 101), "", http.StatusUnprocessableEntity},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
