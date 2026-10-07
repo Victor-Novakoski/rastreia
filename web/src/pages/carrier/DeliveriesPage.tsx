@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { StatusBadge } from '../../components/StatusBadge'
 import { Empty, LoadError, Loading } from '../../components/States'
@@ -12,26 +13,46 @@ export function DeliveriesPage() {
   const { api } = useAuth()
   const [params, setParams] = useSearchParams()
   const status = statuses.find((s) => s === params.get('status'))
+  const search = params.get('q') ?? ''
   const page = Math.max(1, Number(params.get('page')) || 1)
 
+  // O campo acompanha a URL quando ela muda por fora (voltar, link).
+  const [text, setText] = useState(search)
+  const [shownSearch, setShownSearch] = useState(search)
+  if (search !== shownSearch) {
+    setShownSearch(search)
+    setText(search)
+  }
+
   const deliveries = useQuery({
-    queryKey: ['deliveries', { status, page }],
-    queryFn: ({ signal }) => listDeliveries(api, { status, page }, signal),
+    queryKey: ['deliveries', { status, search, page }],
+    queryFn: ({ signal }) => listDeliveries(api, { status, search, page }, signal),
     placeholderData: keepPreviousData,
   })
   const drivers = useDrivers()
   const driverName = (id: number | null) =>
     id === null ? '—' : (drivers.data?.find((d) => d.id === id)?.name ?? `#${id}`)
 
-  function update(next: { status?: Status | ''; page?: number }) {
-    const p = new URLSearchParams(params)
-    if (next.status !== undefined) {
-      if (next.status) p.set('status', next.status)
-      else p.delete('status')
-      p.delete('page')
-    }
-    if (next.page !== undefined) p.set('page', String(next.page))
-    setParams(p)
+  function update(next: { status?: Status | ''; search?: string; page?: number }) {
+    setParams((prev) => {
+      const p = new URLSearchParams(prev)
+      for (const [key, value] of [
+        ['status', next.status],
+        ['q', next.search],
+      ] as const) {
+        if (value === undefined) continue
+        if (value) p.set(key, value)
+        else p.delete(key)
+        p.delete('page')
+      }
+      if (next.page !== undefined) p.set('page', String(next.page))
+      return p
+    })
+  }
+
+  function submitSearch(e: FormEvent) {
+    e.preventDefault()
+    update({ search: text.trim() })
   }
 
   const rows = deliveries.data ?? []
@@ -47,23 +68,49 @@ export function DeliveriesPage() {
         </Link>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <label htmlFor="status-filter" className="font-medium">
-          Status
-        </label>
-        <select
-          id="status-filter"
-          value={status ?? ''}
-          onChange={(e) => update({ status: e.target.value as Status | '' })}
-          className="min-h-11 rounded-lg border border-slate-300 bg-white px-3"
-        >
-          <option value="">Todos</option>
-          {statuses.map((s) => (
-            <option key={s} value={s}>
-              {statusInfo[s].label}
-            </option>
-          ))}
-        </select>
+      <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <form role="search" onSubmit={submitSearch} className="flex grow items-center gap-2 sm:grow-0">
+          <label htmlFor="search" className="font-medium">
+            Buscar
+          </label>
+          <input
+            id="search"
+            type="search"
+            value={text}
+            maxLength={100}
+            placeholder="Código, nome ou e-mail"
+            onChange={(e) => {
+              setText(e.target.value)
+              // Apagar o texto já mostra todas de novo, sem precisar buscar.
+              if (!e.target.value && search) update({ search: '' })
+            }}
+            className="min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 sm:w-72"
+          />
+          <button
+            type="submit"
+            className="min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-4 font-semibold text-brand-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          >
+            Buscar
+          </button>
+        </form>
+        <div className="flex items-center gap-2">
+          <label htmlFor="status-filter" className="font-medium">
+            Status
+          </label>
+          <select
+            id="status-filter"
+            value={status ?? ''}
+            onChange={(e) => update({ status: e.target.value as Status | '' })}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3"
+          >
+            <option value="">Todos</option>
+            {statuses.map((s) => (
+              <option key={s} value={s}>
+                {statusInfo[s].label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -72,7 +119,13 @@ export function DeliveriesPage() {
         ) : deliveries.isError ? (
           <LoadError error={deliveries.error} onRetry={() => void deliveries.refetch()} />
         ) : rows.length === 0 ? (
-          <Empty>{status || page > 1 ? 'Nenhuma entrega com esse filtro.' : 'Nenhuma entrega cadastrada ainda.'}</Empty>
+          <Empty>
+            {search
+              ? `Nenhuma entrega encontrada para “${search}”.`
+              : status || page > 1
+                ? 'Nenhuma entrega com esse filtro.'
+                : 'Nenhuma entrega cadastrada ainda.'}
+          </Empty>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-left text-sm">

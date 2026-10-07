@@ -213,21 +213,35 @@ const listDeliveries = `-- name: ListDeliveries :many
 SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE carrier_id = $1
   AND ($2::text IS NULL OR status = $2::text)
+  AND ($3::text IS NULL
+       OR lower(tracking_code) LIKE '%' || $3::text || '%'
+       OR lower(translate(recipient_name,
+                'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn'))
+          LIKE '%' || $3::text || '%'
+       OR lower(recipient_email) LIKE '%' || $3::text || '%')
 ORDER BY created_at DESC, id DESC
-LIMIT $4 OFFSET $3
+LIMIT $5 OFFSET $4
 `
 
 type ListDeliveriesParams struct {
 	CarrierID int64
 	Status    *string
+	Search    *string
 	Offset    int32
 	Limit     int32
 }
 
+// ListDeliveries lists the carrier's deliveries, newest first. search, when
+// given, matches part of the tracking code or of the recipient's name or
+// e-mail. The service sends it in lower case, without accents and with the
+// LIKE wildcards escaped; translate drops the same accents from the name
+// (the letters of foldAccents in internal/delivery), so "joao" finds "João".
 func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error) {
 	rows, err := q.db.Query(ctx, listDeliveries,
 		arg.CarrierID,
 		arg.Status,
+		arg.Search,
 		arg.Offset,
 		arg.Limit,
 	)

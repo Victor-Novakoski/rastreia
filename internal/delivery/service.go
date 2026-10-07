@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -170,6 +171,10 @@ func (in UpdateInput) apply(r *recipient) (addressChanged bool) {
 
 type ListInput struct {
 	Status *string
+	// Search looks for part of the tracking code or of the recipient's
+	// name or e-mail, ignoring case and accents. Only the carrier's list
+	// uses it.
+	Search string
 	Page   int
 	Size   int
 }
@@ -276,14 +281,14 @@ func (s *Service) Get(ctx context.Context, actor auth.Claims, id int64) (Deliver
 	return fromStore(d), nil
 }
 
-// List lists the carrier's deliveries; the filter is part of the query.
+// List lists the carrier's deliveries; the filters are part of the query.
 func (s *Service) List(ctx context.Context, carrierID int64, in ListInput) ([]Delivery, error) {
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
 	limit, offset := in.page()
 	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
-		CarrierID: carrierID, Status: in.Status, Limit: limit, Offset: offset,
+		CarrierID: carrierID, Status: in.Status, Search: searchPattern(in.Search), Limit: limit, Offset: offset,
 	})
 	return fromStoreList(rows), err
 }
@@ -307,6 +312,7 @@ func (in ListInput) validate() error {
 		v.Check(validStatus(*in.Status), "status", "must be one of "+strings.Join(statuses, ", "))
 	}
 	v.Check(in.Page <= maxPage, "page", "must be at most 10000")
+	v.Check(utf8.RuneCountInString(in.Search) <= maxSearch, "q", "must have at most 100 characters")
 	return v.Err()
 }
 

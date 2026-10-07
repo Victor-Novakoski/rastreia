@@ -60,9 +60,15 @@ export type DeliveryInput = AddressParts & {
 
 export const pageSize = 20
 
-export function listDeliveries(api: Api, params: { status?: Status; page: number }, signal?: AbortSignal) {
+/** `search` procura parte do código ou do nome ou e-mail do destinatário, sem diferenciar acento. */
+export function listDeliveries(
+  api: Api,
+  params: { status?: Status; search?: string; page: number },
+  signal?: AbortSignal,
+) {
   const q = new URLSearchParams({ page: String(params.page), size: String(pageSize) })
   if (params.status) q.set('status', params.status)
+  if (params.search) q.set('q', params.search)
   return api<Delivery[]>(`/deliveries?${q}`, { signal })
 }
 

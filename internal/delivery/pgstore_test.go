@@ -2,6 +2,7 @@ package delivery_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -145,3 +146,55 @@ func TestPG_FailedTransactionLeavesNoTrace(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestPG_SearchByCodeNameOrEmail(t *testing.T) {
+	svc, pool, owner, driver := setup(t)
+	ctx := context.Background()
+	create := func(name, email string) delivery.Delivery {
+		in := input(driver.UserID)
+		in.RecipientName, in.RecipientEmail = name, email
+		d, err := svc.Create(ctx, owner, in)
+		require.NoError(t, err)
+		return d
+	}
+	joao := create("João da Conceição", "joao@example.com")
+	maria := create("Maria Souza", "maria.souza@exemplo.com.br")
+	percent := create("Loja 50% Off", "loja@example.com")
+
+	// Another carrier's delivery never shows up, whatever the search.
+	other := owner
+	other.CarrierID = testdb.Carrier(t, pool)
+	_, err := svc.Create(ctx, other, address())
+	require.NoError(t, err)
+
+	cases := []struct {
+		q    string
+		want []int64
+	}{
+		{"joao", []int64{joao.ID}},
+		{"JOÃO DA", []int64{joao.ID}},
+		{"conceicao", []int64{joao.ID}},
+		{"souza", []int64{maria.ID}},
+		{"exemplo.com", []int64{maria.ID}},
+		{strings.ToLower(maria.TrackingCode[2:8]), []int64{maria.ID}},
+		{maria.TrackingCode, []int64{maria.ID}},
+		{"50%", []int64{percent.ID}},
+		{"%", []int64{percent.ID}},
+		{"_", nil},
+		{"example.com", []int64{percent.ID, joao.ID}},
+		{"ninguém", nil},
+	}
+	for _, tc := range cases {
+		list, err := svc.List(ctx, owner.CarrierID, delivery.ListInput{Search: tc.q})
+		require.NoError(t, err, tc.q)
+		var ids []int64
+		for _, d := range list {
+			ids = append(ids, d.ID)
+		}
+		assert.Equal(t, tc.want, ids, "search %q", tc.q)
+	}
+
+	list, err := svc.List(ctx, owner.CarrierID, delivery.ListInput{Search: "souza", Status: ptr(delivery.StatusDelivered)})
+	require.NoError(t, err)
+	assert.Empty(t, list, "the search and the status filter add up")
+}

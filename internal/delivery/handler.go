@@ -56,7 +56,9 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, err := h.svc.List(r.Context(), actor.CarrierID, listInput(r))
+	in := listInput(r)
+	in.Search = r.URL.Query().Get("q")
+	list, err := h.svc.List(r.Context(), actor.CarrierID, in)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

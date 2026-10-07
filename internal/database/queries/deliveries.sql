@@ -9,10 +9,22 @@ RETURNING *;
 -- name: GetDelivery :one
 SELECT * FROM deliveries WHERE id = $1;
 
+-- ListDeliveries lists the carrier's deliveries, newest first. search, when
+-- given, matches part of the tracking code or of the recipient's name or
+-- e-mail. The service sends it in lower case, without accents and with the
+-- LIKE wildcards escaped; translate drops the same accents from the name
+-- (the letters of foldAccents in internal/delivery), so "joao" finds "João".
 -- name: ListDeliveries :many
 SELECT * FROM deliveries
 WHERE carrier_id = sqlc.arg('carrier_id')
   AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
+  AND (sqlc.narg('search')::text IS NULL
+       OR lower(tracking_code) LIKE '%' || sqlc.narg('search')::text || '%'
+       OR lower(translate(recipient_name,
+                'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn'))
+          LIKE '%' || sqlc.narg('search')::text || '%'
+       OR lower(recipient_email) LIKE '%' || sqlc.narg('search')::text || '%')
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 

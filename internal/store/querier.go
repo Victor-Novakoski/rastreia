@@ -50,6 +50,11 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	ListCarrierUsersByRole(ctx context.Context, arg ListCarrierUsersByRoleParams) ([]User, error)
+	// ListDeliveries lists the carrier's deliveries, newest first. search, when
+	// given, matches part of the tracking code or of the recipient's name or
+	// e-mail. The service sends it in lower case, without accents and with the
+	// LIKE wildcards escaped; translate drops the same accents from the name
+	// (the letters of foldAccents in internal/delivery), so "joao" finds "João".
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)

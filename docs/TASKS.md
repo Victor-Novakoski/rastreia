@@ -2,7 +2,7 @@
 
 Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra aqui antes de ser feito ([RULES.md](RULES.md#1-escopo)). Os números `#N` apontam para os itens de [SECURITY.md](SECURITY.md).
 
-**Etapa atual: 6.6 — Endereço e rota do motorista**
+**Etapa atual: 6.7 — Acabamento e revisão geral**
 
 ## Etapa 1 — Base da API ✅
 
@@ -56,16 +56,16 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Validação nos formulários e bloqueio durante envio (#2, #9)
 - [x] CSP e regras contra XSS (#20)
 
-## Etapa 4 — CI (GitHub Actions) 🟡
+## Etapa 4 — CI (GitHub Actions) ✅
 
 - [x] Testes (unitários e integração), golangci-lint, sqlc em dia e build da imagem em todo PR e push na `develop` e `main`
 - [x] `govulncheck` e gitleaks (#1, #13)
 - [x] Título do PR em Conventional Commits
 - [x] Dependabot para Go, Docker e Actions, apontando para a `develop` (#13)
 - [x] Template de PR, `.editorconfig` e licença MIT
-- [ ] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
+- [x] Marcar os checks como obrigatórios no ruleset (feito no GitHub, não no código)
 - [x] Varredura da imagem Docker (Trivy)
-- [ ] Marcar o check do front como obrigatório no ruleset
+- [x] Marcar o check do front como obrigatório no ruleset
 - [x] Badge da CI no README
 
 ## Etapa 5 — Tempo real ✅
@@ -79,7 +79,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] Notificação no celular por Web Push (PWA instalável), como segundo consumidor do mesmo evento
 - [x] Política de retenção e anonimização de dados (#27)
 
-## Etapa 6.5 — Produto (várias transportadoras)
+## Etapa 6.5 — Produto (várias transportadoras) ✅
 
 O "admin" vira a transportadora, e o projeto passa a funcionar como um produto que várias transportadoras usam ([PRD](PRD.md) RF13 a RF17).
 
@@ -92,7 +92,7 @@ O "admin" vira a transportadora, e o projeto passa a funcionar como um produto q
 - [x] Cadastro e login da transportadora, login do motorista, cada um na sua tela
 - [x] Painel da transportadora com visão geral, primeiros passos e o nome da transportadora no cabeçalho
 
-## Etapa 6.6 — Endereço e rota do motorista
+## Etapa 6.6 — Endereço e rota do motorista ✅
 
 Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem serviço pago.
 
@@ -104,6 +104,12 @@ Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem se
 - [x] Etiqueta com QR-code para imprimir
 - [x] Tela da rota no app do motorista: leitor de QR-code, mapa com as paradas, arrastar para reordenar
 
+## Etapa 6.7 — Acabamento e revisão geral
+
+O que sobrou do backlog antes do deploy, mais o que a revisão geral do código encontrou.
+
+- [x] Busca de entrega por código, nome ou e-mail do destinatário no painel, sem diferenciar acentos ([PRD](PRD.md) RF22)
+
 ## Etapa 7 — Deploy na AWS
 
 - [ ] Cabeçalho `frame-ancestors 'none'` na CDN do front (#20)
@@ -114,5 +120,3 @@ Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem se
 ## Sem etapa
 
 Ideias que surgiram no caminho e ainda não têm lugar.
-
-- [ ] Busca de entrega por código ou destinatário no painel (precisa de filtro na API)
