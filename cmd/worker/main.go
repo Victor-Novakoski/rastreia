@@ -58,6 +58,8 @@ func run() error {
 		consumers = append(consumers, notify.PushConsumer(store.New(pool), notify.WebPush(notify.VAPID{
 			PublicKey: cfg.VAPIDPublicKey, PrivateKey: cfg.VAPIDPrivateKey, Subject: cfg.VAPIDSubject,
 		}), cfg.TrackingURL))
+	} else {
+		consumers = append(consumers, notify.DiscardConsumer(notify.PushQueue))
 	}
 	return notify.NewWorker(cfg.RabbitMQURL, consumers...).Run(ctx)
 }
