@@ -509,6 +509,28 @@ func TestList_Paging(t *testing.T) {
 	assert.Contains(t, verr.Fields, "page")
 }
 
+func TestList_DriverFilter(t *testing.T) {
+	fs := newFakeStore()
+	svc := NewService(fs)
+
+	_, err := svc.List(context.Background(), 1, ListInput{Driver: NoDriver})
+	require.NoError(t, err)
+	assert.True(t, fs.lastList.Unassigned)
+	assert.Nil(t, fs.lastList.DriverID)
+
+	_, err = svc.List(context.Background(), 1, ListInput{Driver: "7"})
+	require.NoError(t, err)
+	assert.False(t, fs.lastList.Unassigned)
+	assert.Equal(t, ptr(int64(7)), fs.lastList.DriverID)
+
+	for _, bad := range []string{"nobody", "0", "-3", "1.5", "99999999999999999999"} {
+		_, err = svc.List(context.Background(), 1, ListInput{Driver: bad})
+		var verr *apperr.ValidationError
+		require.ErrorAs(t, err, &verr, bad)
+		assert.Contains(t, verr.Fields, "driver", bad)
+	}
+}
+
 func TestNewTrackingCode_IsRandom(t *testing.T) {
 	seen := map[string]bool{}
 	for range 1000 {

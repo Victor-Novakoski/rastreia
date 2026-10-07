@@ -213,23 +213,27 @@ const listDeliveries = `-- name: ListDeliveries :many
 SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE carrier_id = $1
   AND ($2::text IS NULL OR status = $2::text)
-  AND ($3::text IS NULL
-       OR lower(tracking_code) LIKE '%' || $3::text || '%'
+  AND (NOT $3::boolean OR driver_id IS NULL)
+  AND ($4::bigint IS NULL OR driver_id = $4::bigint)
+  AND ($5::text IS NULL
+       OR lower(tracking_code) LIKE '%' || $5::text || '%'
        OR lower(translate(recipient_name,
                 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
                 'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn'))
-          LIKE '%' || $3::text || '%'
-       OR lower(recipient_email) LIKE '%' || $3::text || '%')
+          LIKE '%' || $5::text || '%'
+       OR lower(recipient_email) LIKE '%' || $5::text || '%')
 ORDER BY created_at DESC, id DESC
-LIMIT $5 OFFSET $4
+LIMIT $7 OFFSET $6
 `
 
 type ListDeliveriesParams struct {
-	CarrierID int64
-	Status    *string
-	Search    *string
-	Offset    int32
-	Limit     int32
+	CarrierID  int64
+	Status     *string
+	Unassigned bool
+	DriverID   *int64
+	Search     *string
+	Offset     int32
+	Limit      int32
 }
 
 // ListDeliveries lists the carrier's deliveries, newest first. search, when
@@ -237,10 +241,14 @@ type ListDeliveriesParams struct {
 // e-mail. The service sends it in lower case, without accents and with the
 // LIKE wildcards escaped; translate drops the same accents from the name
 // (the letters of foldAccents in internal/delivery), so "joao" finds "João".
+// unassigned keeps only deliveries without a driver; driver_id, only those
+// of one driver.
 func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error) {
 	rows, err := q.db.Query(ctx, listDeliveries,
 		arg.CarrierID,
 		arg.Status,
+		arg.Unassigned,
+		arg.DriverID,
 		arg.Search,
 		arg.Offset,
 		arg.Limit,
@@ -290,8 +298,9 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 const listDriverDeliveries = `-- name: ListDriverDeliveries :many
 SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE driver_id = $1::bigint
+  AND anonymized_at IS NULL
   AND ($2::text IS NULL OR status = $2::text)
-ORDER BY created_at DESC, id DESC
+ORDER BY status = 'delivered', created_at DESC, id DESC
 LIMIT $4 OFFSET $3
 `
 
@@ -302,6 +311,9 @@ type ListDriverDeliveriesParams struct {
 	Limit    int32
 }
 
+// ListDriverDeliveries lists what is still to do before what was delivered,
+// so an old open delivery stays on the first page of a busy driver.
+// Deliveries whose data was erased leave the list: nothing is left to do.
 func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error) {
 	rows, err := q.db.Query(ctx, listDriverDeliveries,
 		arg.DriverID,

@@ -153,12 +153,15 @@ func TestIntegration_DriversOnlyReachTheirOwnDeliveries(t *testing.T) {
 	assert.Empty(t, list)
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path+"/events", a.driverB, "", nil))
 	assert.Equal(t, http.StatusNotFound, a.do(http.MethodPost, path+"/events", a.driverB, `{"status":"picked_up"}`, nil))
-	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, path, a.driverB, "", nil), "carrier routes stay closed to drivers")
-	assert.Equal(t, http.StatusForbidden, a.do(http.MethodPatch, path, a.driverB, `{"driver_id":1}`, nil))
+	assert.Equal(t, http.StatusNotFound, a.do(http.MethodGet, path, a.driverB, "", nil))
+	assert.Equal(t, http.StatusForbidden, a.do(http.MethodPatch, path, a.driverB, `{"driver_id":1}`, nil), "only the carrier edits")
 
 	// Driver A works normally.
 	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/me/deliveries", a.driverA, "", &list))
 	require.Len(t, list, 1)
+	var got delivery.Delivery
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, path, a.driverA, "", &got))
+	assert.Equal(t, d.ID, got.ID)
 	assert.Equal(t, http.StatusCreated, a.do(http.MethodPost, path+"/events", a.driverA, `{"status":"picked_up"}`, nil))
 	assert.Equal(t, http.StatusConflict, a.do(http.MethodPost, path+"/events", a.driverA, `{"status":"picked_up"}`, nil), "repeating an event")
 	assert.Equal(t, http.StatusForbidden, a.do(http.MethodGet, "/me/deliveries", a.owner, "", nil), "/me is for drivers")
@@ -220,6 +223,25 @@ func TestIntegration_IdempotencyKeyHeader(t *testing.T) {
 	var list []delivery.Delivery
 	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries", a.owner, "", &list))
 	assert.Len(t, list, 1)
+}
+
+func TestIntegration_ListByDriver(t *testing.T) {
+	a := newAPI(t, Options{})
+	ana := a.driverID("Ana")
+	var withAna, nobody delivery.Delivery
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner,
+		fmt.Sprintf(`{"recipient_name":"Maria","recipient_email":"maria@example.com","driver_id":%d,%s}`, ana, addressJSON), &withAna))
+	require.Equal(t, http.StatusCreated, a.do(http.MethodPost, "/deliveries", a.owner,
+		`{"recipient_name":"Joana","recipient_email":"joana@example.com",`+addressJSON+`}`, &nobody))
+
+	var list []delivery.Delivery
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, "/deliveries?driver=none&status=pending", a.owner, "", &list))
+	require.Len(t, list, 1)
+	assert.Equal(t, nobody.ID, list[0].ID)
+	require.Equal(t, http.StatusOK, a.do(http.MethodGet, fmt.Sprintf("/deliveries?driver=%d", ana), a.owner, "", &list))
+	require.Len(t, list, 1)
+	assert.Equal(t, withAna.ID, list[0].ID)
+	assert.Equal(t, http.StatusUnprocessableEntity, a.do(http.MethodGet, "/deliveries?driver=ana", a.owner, "", nil))
 }
 
 func TestIntegration_RefreshTokenRotation(t *testing.T) {

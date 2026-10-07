@@ -123,7 +123,6 @@ func New(d Deps) http.Handler {
 
 			r.Get("/deliveries", d.Deliveries.List)
 			r.Post("/deliveries", d.Deliveries.Create)
-			r.Get("/deliveries/{id}", d.Deliveries.Get)
 			r.Patch("/deliveries/{id}", d.Deliveries.Update)
 		})
 
@@ -132,6 +131,7 @@ func New(d Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleCarrier, auth.RoleDriver))
 
+			r.Get("/deliveries/{id}", d.Deliveries.Get)
 			r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
 			r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)
 		})
