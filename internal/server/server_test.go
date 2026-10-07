@@ -97,6 +97,14 @@ func TestRateLimit_IgnoresForwardedForUnlessTrusted(t *testing.T) {
 		"behind a trusted proxy each client IP has its own limit")
 }
 
+func TestRateLimit_IPv6CountsTheWholeSlash64(t *testing.T) {
+	h := newTestServer(Options{RateLimit: 1, TrustProxy: true})
+	require.Equal(t, http.StatusOK, get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:2::1"}).Code)
+	rec := get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:2:ffff::9"})
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code, "another address of the same /64 is the same client")
+	assert.Equal(t, http.StatusOK, get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:3::1"}).Code)
+}
+
 func TestLoginRateLimit(t *testing.T) {
 	h := newTestServer(Options{LoginRateLimit: 2})
 	login := func() int {

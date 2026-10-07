@@ -39,14 +39,13 @@ func requestLog(next http.Handler) http.Handler {
 		case status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests:
 			level, msg = slog.LevelWarn, "request denied"
 		}
-		ip, _ := remoteIP(r)
 		attrs := []slog.Attr{
 			slog.String("method", r.Method),
 			slog.String("route", routePattern(r)),
 			slog.Int("status", status),
 			slog.Int("bytes", ww.BytesWritten()),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			slog.String("ip", ip),
+			slog.String("ip", httpx.ClientIP(r)),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		}
 		slog.LogAttrs(r.Context(), level, msg, append(attrs, extra.Attrs()...)...)

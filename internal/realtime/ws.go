@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -86,13 +85,13 @@ func (s *Server) StreamAuth(w http.ResponseWriter, r *http.Request, authorize Au
 }
 
 func (s *Server) stream(w http.ResponseWriter, r *http.Request, topic string, authorize Authorize) {
-	ip := clientIP(r)
-	if !s.acquire(ip) {
+	key := httpx.ClientKey(r)
+	if !s.acquire(key) {
 		httpx.AddLogAttrs(r.Context(), slog.String("reason", "too many websockets"))
 		httpx.Error(w, http.StatusTooManyRequests, "too many open connections")
 		return
 	}
-	defer s.release(ip)
+	defer s.release(key)
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: s.origins})
 	if err != nil {
@@ -108,7 +107,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, topic string, au
 		topic, exp, err = readAuth(ctx, c, authorize)
 		if err != nil {
 			// The upgrade already answered 101, so the denial gets a line of its own.
-			slog.Warn("websocket denied", "ip", ip, "request_id", middleware.GetReqID(ctx), "err", err)
+			slog.Warn("websocket denied", "ip", httpx.ClientIP(r), "request_id", middleware.GetReqID(ctx), "err", err)
 			_ = c.Close(StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -197,14 +196,4 @@ func (s *Server) release(ip string) {
 	if s.perIP[ip]--; s.perIP[ip] <= 0 {
 		delete(s.perIP, ip)
 	}
-}
-
-// clientIP is r.RemoteAddr without the port. Behind a proxy the server's
-// trustedProxy middleware has already put the real client IP there.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
