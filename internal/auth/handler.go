@@ -29,7 +29,8 @@ const RefreshCookie = "rastreia_refresh"
 // CookieOptions says how the refresh cookie is set and who may use it.
 type CookieOptions struct {
 	// AllowedOrigins must contain the Origin of /auth/refresh and
-	// /auth/logout requests. With SameSite=Strict, it is the CSRF defense
+	// /auth/logout requests, and of /auth/login and /auth/signup when a
+	// browser sends them. With SameSite=Strict, it is the CSRF defense
 	// (SECURITY.md #10).
 	AllowedOrigins []string
 }
@@ -120,10 +121,22 @@ func (h *Handler) StartSession(w http.ResponseWriter, r *http.Request, c Claims)
 	h.respondWithTokens(w, c, refresh)
 }
 
+// RefuseForeignOrigin answers 403, before anything is done, to a browser
+// sending the request from a site not in AllowedOrigins. /auth/login and
+// /auth/signup set the refresh cookie: without this, another site could post
+// a form that logs the victim's browser into the attacker's account (login
+// CSRF). Clients that are not browsers send no Origin and go through.
+func (h *Handler) RefuseForeignOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !h.originRefused(w, r, false) {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
 // Refresh trades the refresh cookie for a new access token and a new cookie.
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	if !h.originAllowed(r) {
-		httpx.Error(w, http.StatusForbidden, "origin not allowed")
+	if h.originRefused(w, r, true) {
 		return
 	}
 	c, err := r.Cookie(RefreshCookie)
@@ -147,8 +160,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 // Logout revokes the session and clears the cookie. It always answers 204,
 // even without a cookie, so the front can call it unconditionally.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	if !h.originAllowed(r) {
-		httpx.Error(w, http.StatusForbidden, "origin not allowed")
+	if h.originRefused(w, r, true) {
 		return
 	}
 	if c, err := r.Cookie(RefreshCookie); err == nil {
@@ -193,11 +205,18 @@ func (h *Handler) clearCookie(w http.ResponseWriter) {
 	})
 }
 
-// originAllowed rejects requests without an Origin from the allowed list.
-// Browsers always send Origin on POST, so a missing one is not a browser
-// on our front-end.
-func (h *Handler) originAllowed(r *http.Request) bool {
-	return slices.Contains(h.cookie.AllowedOrigins, r.Header.Get("Origin"))
+// originRefused answers 403 when the request's Origin is not in the allowed
+// list. With required, a request without Origin is refused too: browsers
+// always send it on POST, so it is not a browser on our front-end, and only
+// a browser has the cookie.
+func (h *Handler) originRefused(w http.ResponseWriter, r *http.Request, required bool) bool {
+	origin := r.Header.Get("Origin")
+	if slices.Contains(h.cookie.AllowedOrigins, origin) || (origin == "" && !required) {
+		return false
+	}
+	httpx.AddLogAttrs(r.Context(), slog.String("reason", "origin not allowed"))
+	httpx.Error(w, http.StatusForbidden, "origin not allowed")
+	return true
 }
 
 // emailFingerprint identifies an e-mail in logs without writing it in full.

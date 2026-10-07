@@ -97,6 +97,9 @@ func (c Config) validate() error {
 	if len(c.JWTSecret) < 32 {
 		errs = append(errs, errors.New("JWT_SECRET must have at least 32 characters"))
 	}
+	if c.JWTTTL <= 0 || c.RefreshTTL <= c.JWTTTL {
+		errs = append(errs, errors.New("JWT_TTL must be positive and shorter than REFRESH_TTL"))
+	}
 	if c.RetentionDays < 31 {
 		errs = append(errs, errors.New("RETENTION_DAYS must be at least 31, after the public link expires"))
 	}

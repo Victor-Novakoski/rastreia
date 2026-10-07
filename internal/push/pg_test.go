@@ -2,11 +2,13 @@ package push_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Victor-Novakoski/rastreia/internal/apperr"
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/push"
@@ -43,6 +45,13 @@ func TestPG_SubscribeListAndForget(t *testing.T) {
 	list, err = q.ListPushSubscriptionsByCode(ctx, d.TrackingCode)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
+
+	for i := len(list); i < push.MaxPerDelivery; i++ {
+		require.NoError(t, svc.Subscribe(ctx, d.TrackingCode, sub(fmt.Sprintf("https://fcm.googleapis.com/fcm/send/%d", i))))
+	}
+	require.NoError(t, svc.Subscribe(ctx, d.TrackingCode, s), "a browser already in can always subscribe again")
+	err = svc.Subscribe(ctx, d.TrackingCode, sub("https://fcm.googleapis.com/fcm/send/one-too-many"))
+	assert.ErrorIs(t, err, apperr.ErrConflict)
 
 	require.NoError(t, q.DeletePushSubscriptionsByCode(ctx, d.TrackingCode))
 	list, err = q.ListPushSubscriptionsByCode(ctx, d.TrackingCode)

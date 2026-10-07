@@ -32,12 +32,3 @@ func lastForwardedFor(r *http.Request) string {
 	}
 	return ip.String()
 }
-
-// remoteIP is the rate-limit key: the IP of r.RemoteAddr without the port.
-func remoteIP(r *http.Request) (string, error) {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	return host, nil
-}

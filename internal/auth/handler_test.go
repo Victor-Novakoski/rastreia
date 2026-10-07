@@ -150,6 +150,30 @@ func TestRefreshAndLogout(t *testing.T) {
 	assert.Equal(t, -1, refreshCookie(t, rec).MaxAge, "invalid session clears the cookie")
 }
 
+func TestRefuseForeignOrigin(t *testing.T) {
+	h := NewHandler(fakeUsers{}, NewTokens(testSecret, time.Hour), NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour),
+		CookieOptions{AllowedOrigins: []string{testOrigin}})
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+
+	for origin, want := range map[string]int{
+		testOrigin:             http.StatusTeapot,
+		"":                     http.StatusTeapot, // curl and other clients that are not browsers
+		"https://evil.example": http.StatusForbidden,
+		"null":                 http.StatusForbidden, // sandboxed iframe or file
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{}`))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		h.RefuseForeignOrigin(next).ServeHTTP(rec, req)
+		assert.Equal(t, want, rec.Code, origin)
+		if want == http.StatusForbidden {
+			assert.Empty(t, rec.Result().Cookies(), "no session for a form posted from another site")
+		}
+	}
+}
+
 type brokenGuard struct{ *LoginGuard }
 
 func (brokenGuard) Check(context.Context, string) (time.Duration, error) {

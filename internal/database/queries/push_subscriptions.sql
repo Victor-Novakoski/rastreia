@@ -3,8 +3,10 @@ INSERT INTO push_subscriptions (delivery_id, endpoint, p256dh, auth)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (delivery_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth;
 
+-- CountPushSubscriptions counts the other browsers following the delivery,
+-- so one subscribing again does not count itself.
 -- name: CountPushSubscriptions :one
-SELECT count(*) FROM push_subscriptions WHERE delivery_id = $1;
+SELECT count(*) FROM push_subscriptions WHERE delivery_id = $1 AND endpoint <> $2;
 
 -- name: DeletePushSubscription :exec
 DELETE FROM push_subscriptions WHERE delivery_id = $1 AND endpoint = $2;

@@ -5,9 +5,12 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,7 +38,7 @@ func (f *fakeStore) UpsertPushSubscription(_ context.Context, p store.UpsertPush
 	return nil
 }
 
-func (f *fakeStore) CountPushSubscriptions(context.Context, int64) (int64, error) {
+func (f *fakeStore) CountPushSubscriptions(context.Context, store.CountPushSubscriptionsParams) (int64, error) {
 	return f.count, nil
 }
 
@@ -124,4 +127,19 @@ func TestSubscribe_DeliveredOrFull(t *testing.T) {
 
 	full := push.NewService(inTransit(), &fakeStore{count: push.MaxPerDelivery})
 	assert.ErrorIs(t, full.Subscribe(context.Background(), "RSABCDEFGH23", ok), apperr.ErrConflict)
+}
+
+// The front sends PushSubscription.toJSON() as the browser makes it,
+// expirationTime included.
+func TestHandler_SubscribeTakesTheBrowserJSON(t *testing.T) {
+	st := &fakeStore{}
+	r := chi.NewRouter()
+	r.Post("/public/tracking/{code}/push", push.NewHandler(push.NewService(inTransit(), st), "key").Subscribe)
+
+	s := sub("https://fcm.googleapis.com/fcm/send/abc")
+	body := `{"endpoint":"` + s.Endpoint + `","expirationTime":null,"keys":{"p256dh":"` + s.Keys.P256dh + `","auth":"` + s.Keys.Auth + `"}}`
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/public/tracking/RSABCDEFGH23/push", strings.NewReader(body)))
+	assert.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	assert.Len(t, st.saved, 1)
 }

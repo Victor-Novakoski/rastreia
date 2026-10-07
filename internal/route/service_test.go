@@ -46,3 +46,23 @@ func TestGroupStops(t *testing.T) {
 		assert.Equal(t, []int{1, 2, 3}, []int{stops[0].Number, stops[1].Number, stops[2].Number})
 	}
 }
+
+func TestGroupStops_NoNumber(t *testing.T) {
+	farm := func(id int64, lat, lng *float64) store.ListRouteItemsRow {
+		return store.ListRouteItemsRow{Delivery: store.Delivery{ID: id, PostalCode: "89750000", Street: "Estrada Geral",
+			Number: "S/N", District: "Interior", City: "Seara", Latitude: lat, Longitude: lng}}
+	}
+	at := func(v float64) *float64 { return &v }
+
+	stops := groupStops([]store.ListRouteItemsRow{
+		farm(1, at(-27.10), at(-52.60)), farm(2, at(-27.20), at(-52.70)), farm(3, at(-27.10001), at(-52.60001)),
+		farm(4, nil, nil), farm(5, nil, nil),
+	})
+
+	if assert.Len(t, stops, 4) {
+		assert.Equal(t, []int64{1, 3}, stops[0].items, "same spot of the map, same door")
+		assert.Equal(t, []int64{2}, stops[1].items, "a farm down the road is another stop")
+		assert.Equal(t, []int64{4}, stops[2].items, "off the map nothing says they are the same door")
+		assert.Equal(t, []int64{5}, stops[3].items)
+	}
+}

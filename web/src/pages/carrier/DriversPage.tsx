@@ -120,7 +120,7 @@ function NewDriverForm() {
         minLength={10}
         autoComplete="new-password"
         error={errors.password}
-        hint="Mínimo de 10 caracteres. Passe para o motorista por um canal seguro."
+        hint="Mínimo de 10 caracteres, sem repetir o e-mail. Passe para o motorista por um canal seguro."
       />
       <Button type="submit" loading={create.isPending} className="self-start">
         Cadastrar

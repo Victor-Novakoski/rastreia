@@ -5,10 +5,14 @@ VALUES ($1, $2, $3)
 ON CONFLICT (driver_id, route_date) DO UPDATE SET route_date = excluded.route_date
 RETURNING *;
 
+-- ListRouteItems lists the route's packages in order. A package the carrier
+-- gave to another driver after it was scanned leaves the route, so the first
+-- driver no longer sees the recipient.
 -- name: ListRouteItems :many
 SELECT sqlc.embed(d), ri.position
 FROM route_items ri
-JOIN deliveries d ON d.id = ri.delivery_id
+JOIN routes r ON r.id = ri.route_id
+JOIN deliveries d ON d.id = ri.delivery_id AND d.driver_id = r.driver_id
 WHERE ri.route_id = $1
 ORDER BY ri.position, ri.added_at;
 

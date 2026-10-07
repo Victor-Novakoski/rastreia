@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -79,7 +80,7 @@ func (f *fakeStore) ListDriverDeliveries(_ context.Context, arg store.ListDriver
 
 func (f *fakeStore) SetDeliveryStatus(_ context.Context, arg store.SetDeliveryStatusParams) (store.Delivery, error) {
 	d, ok := f.deliveries[arg.ID]
-	if !ok || d.Status != arg.FromStatus {
+	if !ok || d.Status != arg.FromStatus || d.AnonymizedAt != nil {
 		return store.Delivery{}, pgx.ErrNoRows
 	}
 	d.Status, d.CompletedAt = arg.Status, arg.CompletedAt
@@ -199,7 +200,7 @@ func (f *fakeStore) CountUnassignedDeliveries(_ context.Context, carrierID int64
 
 func (f *fakeStore) UpdateDelivery(_ context.Context, arg store.UpdateDeliveryParams) (store.Delivery, error) {
 	d, ok := f.deliveries[arg.ID]
-	if !ok {
+	if !ok || d.AnonymizedAt != nil {
 		return store.Delivery{}, pgx.ErrNoRows
 	}
 	d.RecipientName, d.RecipientEmail, d.RecipientPhone = arg.RecipientName, arg.RecipientEmail, arg.RecipientPhone
@@ -297,6 +298,16 @@ func TestCreate_Validation(t *testing.T) {
 			assert.Contains(t, verr.Fields, tc.field)
 		})
 	}
+}
+
+// The limits count characters, as the form's maxLength does: a name full of
+// accents fits as long as a plain one.
+func TestCreate_LimitsCountCharacters(t *testing.T) {
+	in := validInput()
+	in.RecipientName = strings.Repeat("ã", 120)
+	in.Street = strings.Repeat("ç", 200)
+	_, err := NewService(newFakeStore()).Create(context.Background(), owner, in)
+	assert.NoError(t, err)
 }
 
 func TestCreate_WithDriver(t *testing.T) {
@@ -408,6 +419,52 @@ func TestUpdate(t *testing.T) {
 	_, err = svc.Update(context.Background(), owner, created.ID, UpdateInput{RecipientEmail: ptr("nope")})
 	var verr *apperr.ValidationError
 	assert.ErrorAs(t, err, &verr)
+}
+
+// retentionInBetween anonymizes the delivery between the service reading it
+// and writing the change, as the retention job could.
+type retentionInBetween struct{ *fakeStore }
+
+func (r retentionInBetween) UpdateDelivery(ctx context.Context, arg store.UpdateDeliveryParams) (store.Delivery, error) {
+	d := r.deliveries[arg.ID]
+	d.AnonymizedAt = ptr(time.Now())
+	r.deliveries[arg.ID] = d
+	return r.fakeStore.UpdateDelivery(ctx, arg)
+}
+
+func TestUpdate_RacingRetention(t *testing.T) {
+	fs := newFakeStore()
+	created, err := NewService(fs).Create(context.Background(), owner, validInput())
+	require.NoError(t, err)
+
+	_, err = NewService(retentionInBetween{fs}).Update(context.Background(), owner, created.ID, UpdateInput{Number: ptr("20")})
+	assert.ErrorIs(t, err, apperr.ErrConflict)
+	assert.Equal(t, "10", fs.deliveries[created.ID].Number, "nothing is written over the erased data")
+}
+
+// usersDown fails to read users, as when the database is out.
+type usersDown struct{ *fakeStore }
+
+func (usersDown) GetUserByID(context.Context, int64) (store.User, error) {
+	return store.User{}, errors.New("connection refused")
+}
+
+func TestDriverCheck_DatabaseErrorIsNotInvalidInput(t *testing.T) {
+	fs := newFakeStore()
+	created, err := NewService(fs).Create(context.Background(), owner, validInput())
+	require.NoError(t, err)
+	svc := NewService(usersDown{fs})
+
+	in := validInput()
+	in.DriverID = ptr[int64](2)
+	_, err = svc.Create(context.Background(), owner, in)
+	var verr *apperr.ValidationError
+	assert.False(t, errors.As(err, &verr), "a 500, not a 422 blaming the driver")
+	assert.ErrorContains(t, err, "connection refused")
+
+	_, err = svc.Update(context.Background(), owner, created.ID, UpdateInput{DriverID: ptr[int64](2)})
+	assert.False(t, errors.As(err, &verr))
+	assert.ErrorContains(t, err, "connection refused")
 }
 
 // Deliveries created before the address was split only have the one-line

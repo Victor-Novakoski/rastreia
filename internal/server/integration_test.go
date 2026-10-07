@@ -179,7 +179,7 @@ func TestIntegration_PublicTracking(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.h.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
-	for _, secret := range []string{"Souza", "maria@example.com", "Rua A", `"id"`} {
+	for _, secret := range []string{"Souza", "maria@example.com", "Praça da Sé", "11987654321", "01001000", `"id"`} {
 		assert.NotContains(t, rec.Body.String(), secret)
 	}
 
@@ -313,7 +313,7 @@ func TestIntegration_LiveUpdates(t *testing.T) {
 	var tr delivery.Tracking
 	require.NoError(t, json.Unmarshal([]byte(msg), &tr))
 	assert.Equal(t, delivery.StatusPickedUp, tr.Status)
-	for _, secret := range []string{"Souza", "maria@example.com", "Rua A"} {
+	for _, secret := range []string{"Souza", "maria@example.com", "Praça da Sé", "11987654321"} {
 		assert.NotContains(t, msg, secret)
 	}
 

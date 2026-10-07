@@ -20,6 +20,8 @@ func TestSearchPattern(t *testing.T) {
 		"rs7k2m":                  ptr("rs7k2m"),
 		"50%_off":                 ptr(`50\%\_off`),
 		`a\b`:                     ptr(`a\\b`),
+		"ana\x00maria":            ptr("ana maria"),
+		"\x00":                    nil,
 	}
 	for in, want := range cases {
 		assert.Equal(t, want, searchPattern(in), "%q", in)

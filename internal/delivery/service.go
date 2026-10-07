@@ -216,7 +216,9 @@ func (s *Service) validateCreate(ctx context.Context, carrierID int64, in Create
 	rec.validatePhone(v)
 	rec.validateAddress(v)
 	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, carrierID, *in.DriverID), "driver_id", "must be an existing driver")
+		if err := s.checkDriver(ctx, v, carrierID, *in.DriverID); err != nil {
+			return rec, err
+		}
 	}
 	return rec, v.Err()
 }
@@ -361,7 +363,9 @@ func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in Up
 		rec.validateAddress(v)
 	}
 	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, actor.CarrierID, *in.DriverID), "driver_id", "must be an existing driver")
+		if err := s.checkDriver(ctx, v, actor.CarrierID, *in.DriverID); err != nil {
+			return Delivery{}, err
+		}
 	}
 	if err := v.Err(); err != nil {
 		return Delivery{}, err
@@ -389,8 +393,11 @@ func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in Up
 		Longitude:        rec.Longitude,
 		DriverID:         in.DriverID,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Delivery{}, errAnonymized // the retention job got there after visible
+	}
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	// The public page shows the recipient's first name, so it reloads too.
 	s.announce(ctx, d.CarrierID, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
@@ -406,11 +413,15 @@ func recipientOf(d store.Delivery) recipient {
 	}
 }
 
-// isDriver tells whether id is a driver of the carrier; another carrier's
-// driver gets the same answer as a missing one.
-func (s *Service) isDriver(ctx context.Context, carrierID, id int64) bool {
+// checkDriver refuses id unless it is a driver of the carrier; another
+// carrier's driver gets the same answer as a missing one.
+func (s *Service) checkDriver(ctx context.Context, v apperr.Validator, carrierID, id int64) error {
 	u, err := s.store.GetUserByID(ctx, id)
-	return err == nil && u.Role == auth.RoleDriver && u.CarrierID == carrierID
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	v.Check(err == nil && u.Role == auth.RoleDriver && u.CarrierID == carrierID, "driver_id", "must be an existing driver")
+	return nil
 }
 
 // Tracking codes skip 0/O and 1/I so they are easy to read over the phone.

@@ -58,6 +58,11 @@ func New(d Deps) http.Handler {
 	}
 
 	r := chi.NewRouter()
+	// Unknown routes and methods answer in the same JSON as every other error.
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		httpx.Error(w, http.StatusNotFound, "not found")
+	})
+	r.MethodNotAllowed(methodNotAllowed(r))
 	r.Use(middleware.RequestID)
 	if opts.TrustProxy {
 		r.Use(trustedProxy)
@@ -93,8 +98,8 @@ func New(d Deps) http.Handler {
 			_, _ = w.Write(api.OpenAPI)
 		})
 
-		r.With(limit("login", opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
-		r.With(limit("signup", opts.LoginRateLimit)).Post("/auth/signup", d.Users.SignUp)
+		r.With(limit("login", opts.LoginRateLimit), d.Auth.RefuseForeignOrigin).Post("/auth/login", d.Auth.Login)
+		r.With(limit("signup", opts.LoginRateLimit), d.Auth.RefuseForeignOrigin).Post("/auth/signup", d.Users.SignUp)
 		r.With(limit("refresh", opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
 		r.With(limit("logout", opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
 		// Its own, tighter limit makes guessing tracking codes slow.
@@ -144,4 +149,17 @@ func New(d Deps) http.Handler {
 	})
 
 	return r
+}
+
+// methodNotAllowed answers 405 with the methods the path does take in Allow,
+// as chi's own handler does.
+func methodNotAllowed(routes chi.Routes) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+			if routes.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		httpx.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -89,7 +90,9 @@ func (s *Service) SignUp(ctx context.Context, in SignUpInput) (User, error) {
 	return s.signUp(ctx, in, true)
 }
 
-func (s *Service) signUp(ctx context.Context, in SignUpInput, rejectCommon bool) (User, error) {
+// signUp creates the carrier. strict is off only for the demo account, whose
+// password comes from configuration (see validate).
+func (s *Service) signUp(ctx context.Context, in SignUpInput, strict bool) (User, error) {
 	in.CarrierName = strings.TrimSpace(in.CarrierName)
 	if in.Document != nil {
 		doc := normalizeCNPJ(*in.Document)
@@ -100,9 +103,9 @@ func (s *Service) signUp(ctx context.Context, in SignUpInput, rejectCommon bool)
 	}
 	v := apperr.Validator{}
 	v.Check(in.CarrierName != "", "carrier_name", "is required")
-	v.Check(len(in.CarrierName) <= maxName, "carrier_name", "must have at most 120 characters")
+	v.Check(utf8.RuneCountInString(in.CarrierName) <= maxName, "carrier_name", "must have at most 120 characters")
 	v.Check(in.Document == nil || validCNPJ(*in.Document), "document", "must be a valid CNPJ")
-	in.CreateInput = s.validate(v, in.CreateInput, rejectCommon)
+	in.CreateInput = s.validate(v, in.CreateInput, strict)
 	if err := v.Err(); err != nil {
 		return User{}, err
 	}
@@ -184,19 +187,27 @@ func (s *Service) EnsureDemoCarrier(ctx context.Context, in CreateInput) error {
 	// The password comes from configuration, which already refuses the
 	// development default in production, so only the length rule applies.
 	_, err = s.signUp(ctx, SignUpInput{CarrierName: DemoCarrier, CreateInput: in}, false)
+	if errors.Is(err, apperr.ErrConflict) {
+		return nil // another instance, starting at the same time, created it
+	}
 	return err
 }
 
-// validate normalizes and checks the fields shared by every account.
-func (s *Service) validate(v apperr.Validator, in CreateInput, rejectCommon bool) CreateInput {
+// validate normalizes and checks the fields shared by every account. strict
+// also refuses common passwords and passwords made from the e-mail; the demo
+// account skips it, since its development password is both.
+func (s *Service) validate(v apperr.Validator, in CreateInput, strict bool) CreateInput {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Email = normalizeEmail(in.Email)
 	v.Check(in.Name != "", "name", "is required")
-	v.Check(len(in.Name) <= maxName, "name", "must have at most 120 characters")
+	v.Check(utf8.RuneCountInString(in.Name) <= maxName, "name", "must have at most 120 characters")
 	v.Check(len(in.Email) <= maxEmail && validEmail(in.Email), "email", "must be a valid e-mail")
 	problem := auth.PasswordProblem(in.Password)
-	if !rejectCommon && problem == "is too common" {
+	switch {
+	case !strict && problem == "is too common":
 		problem = ""
+	case strict && problem == "" && auth.PasswordHasEmail(in.Password, in.Email):
+		problem = "must not contain the e-mail"
 	}
 	v.Check(problem == "", "password", problem)
 	return in

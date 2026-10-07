@@ -71,6 +71,13 @@ func (f *fakeMailer) count() int {
 	return len(f.sent)
 }
 
+// fresh is msg happening now: the worker drops changes older than an hour.
+func fresh(status string) notify.StatusChanged {
+	m := msg(status)
+	m.OccurredAt = time.Now()
+	return m
+}
+
 func publish(t *testing.T, url string, m notify.StatusChanged) {
 	t.Helper()
 	pub := notify.NewPublisher(url)
@@ -120,7 +127,7 @@ func TestWorker_SendsEmail(t *testing.T) {
 	url := rabbit(t)
 	purge(t, url)
 	// Published before the worker runs: Declare in the publisher keeps it.
-	publish(t, url, msg("delivered"))
+	publish(t, url, fresh("delivered"))
 
 	mailer := &fakeMailer{}
 	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio")))
@@ -135,7 +142,7 @@ func TestWorker_ParksAfterMaxAttempts(t *testing.T) {
 	c := notify.EmailConsumer(&fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio")
 	c.MaxAttempts = 1
 	startWorker(t, notify.NewWorker(url, c))
-	publish(t, url, msg("delivered"))
+	publish(t, url, fresh("delivered"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailDeadQueue) == 1 }, 10*time.Second, 100*time.Millisecond)
 	assert.Equal(t, 0, queueLen(t, url, notify.EmailRetryQueue))
@@ -145,7 +152,7 @@ func TestWorker_RetriesSendFailure(t *testing.T) {
 	url := rabbit(t)
 	purge(t, url)
 	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(&fakeMailer{err: errors.New("smtp down")}, "http://localhost:5173/rastreio")))
-	publish(t, url, msg("delivered"))
+	publish(t, url, fresh("delivered"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailRetryQueue) == 1 }, 10*time.Second, 100*time.Millisecond)
 	assert.Equal(t, 0, queueLen(t, url, notify.EmailDeadQueue))
@@ -162,7 +169,7 @@ func TestWorker_FansOutToEveryChannel(t *testing.T) {
 		return nil
 	}}
 	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio"), push))
-	publish(t, url, msg("in_transit"))
+	publish(t, url, fresh("in_transit"))
 
 	require.Eventually(t, func() bool { return mailer.count() == 1 }, 10*time.Second, 50*time.Millisecond)
 	pushed.Wait()
@@ -173,8 +180,37 @@ func TestWorker_ParksBadMessage(t *testing.T) {
 	purge(t, url)
 	mailer := &fakeMailer{}
 	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio")))
-	publish(t, url, msg("lost"))
+	publish(t, url, fresh("lost"))
 
 	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailDeadQueue) == 1 }, 10*time.Second, 100*time.Millisecond)
 	assert.Zero(t, mailer.count())
+}
+
+func TestWorker_DropsOldChanges(t *testing.T) {
+	url := rabbit(t)
+	purge(t, url)
+	old := fresh("in_transit")
+	old.OccurredAt = time.Now().Add(-2 * time.Hour) // the worker was down
+	publish(t, url, old)
+	publish(t, url, fresh("delivered"))
+	mailer := &fakeMailer{}
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio")))
+
+	require.Eventually(t, func() bool { return queueLen(t, url, notify.EmailQueue) == 0 && mailer.count() == 1 }, 10*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "Sua entrega RSABCDEFGH23 foi entregue", mailer.sent[0].Subject, "only the recent change is sent")
+	assert.Zero(t, queueLen(t, url, notify.EmailDeadQueue))
+}
+
+func TestWorker_DiscardsPushWithoutKeys(t *testing.T) {
+	url := rabbit(t)
+	purge(t, url)
+	mailer := &fakeMailer{}
+	startWorker(t, notify.NewWorker(url, notify.EmailConsumer(mailer, "http://localhost:5173/rastreio"), notify.DiscardConsumer(notify.PushQueue)))
+	for range 3 {
+		publish(t, url, fresh("in_transit"))
+	}
+
+	require.Eventually(t, func() bool { return mailer.count() == 3 }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return queueLen(t, url, notify.PushQueue) == 0 }, 10*time.Second, 50*time.Millisecond,
+		"nothing piles up in the push queue")
 }

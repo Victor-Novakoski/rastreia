@@ -120,7 +120,7 @@ export function SignUpPage() {
             value={form.password}
             onChange={set('password')}
             error={errors.password}
-            hint="Mínimo de 10 caracteres."
+            hint="Mínimo de 10 caracteres, sem repetir o e-mail."
           />
         </fieldset>
         <Button type="submit" loading={sending}>

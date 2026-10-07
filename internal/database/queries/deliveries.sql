@@ -30,7 +30,8 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- UpdateDelivery writes every recipient and address field: the service
 -- merges the change into the current delivery first. The driver is only
--- changed when sent.
+-- changed when sent. An anonymized delivery is left alone, or an edit racing
+-- the retention job would write the erased data back.
 -- name: UpdateDelivery :one
 UPDATE deliveries SET
     recipient_name    = sqlc.arg('recipient_name'),
@@ -49,7 +50,7 @@ UPDATE deliveries SET
     longitude         = sqlc.narg('longitude'),
     driver_id         = coalesce(sqlc.narg('driver_id'), driver_id),
     updated_at        = now()
-WHERE id = sqlc.arg('id')
+WHERE id = sqlc.arg('id') AND anonymized_at IS NULL
 RETURNING *;
 
 -- name: ListDriverDeliveries :many
@@ -63,13 +64,14 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 SELECT * FROM deliveries WHERE tracking_code = $1;
 
 -- SetDeliveryStatus only changes the row if the status is still the one the
--- caller saw, so two concurrent events cannot both apply.
+-- caller saw, so two concurrent events cannot both apply, and if the
+-- recipient's data was not erased in the meantime.
 -- name: SetDeliveryStatus :one
 UPDATE deliveries SET
     status       = sqlc.arg('status'),
     completed_at = sqlc.narg('completed_at'),
     updated_at   = now()
-WHERE id = sqlc.arg('id') AND status = sqlc.arg('from_status')
+WHERE id = sqlc.arg('id') AND status = sqlc.arg('from_status') AND anonymized_at IS NULL
 RETURNING *;
 
 -- CountDeliveriesByStatus feeds the carrier's dashboard. since limits the

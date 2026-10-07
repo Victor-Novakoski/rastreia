@@ -187,14 +187,40 @@ func TestEnsureDemoCarrier_IsIdempotent(t *testing.T) {
 	assert.Equal(t, DemoCarrier, fs.carriers[0].Name)
 }
 
+// startingTogether does not see the account another instance has just created.
+type startingTogether struct{ *fakeStore }
+
+func (startingTogether) GetUserByEmail(context.Context, string) (store.User, error) {
+	return store.User{}, pgx.ErrNoRows
+}
+
+func TestEnsureDemoCarrier_TwoInstancesAtOnce(t *testing.T) {
+	fs := &fakeStore{}
+	in := CreateInput{Name: "Admin", Email: "admin@example.com", Password: "admin12345"}
+	require.NoError(t, NewService(fs).EnsureDemoCarrier(context.Background(), in))
+
+	err := NewService(startingTogether{fs}).EnsureDemoCarrier(context.Background(), in)
+	assert.NoError(t, err, "the other instance created it first")
+	assert.Len(t, fs.users, 1)
+}
+
 func TestCreateDriver_PasswordPolicy(t *testing.T) {
 	svc := NewService(&fakeStore{})
-	for _, pw := range []string{"curta123", "1234567890", "Senha12345", strings.Repeat("a", 73)} {
-		_, err := svc.CreateDriver(context.Background(), 1, CreateInput{Name: "Ana", Email: "ana@example.com", Password: pw})
+	for _, pw := range []string{"curta123", "1234567890", "Senha12345", strings.Repeat("a", 73), "Ana.Paula-2026", "anapaula@example.com"} {
+		_, err := svc.CreateDriver(context.Background(), 1, CreateInput{Name: "Ana", Email: "ana.paula@example.com", Password: pw})
 		var verr *apperr.ValidationError
 		require.ErrorAs(t, err, &verr, pw)
 		assert.Contains(t, verr.Fields, "password")
 	}
+	_, err := svc.CreateDriver(context.Background(), 1, CreateInput{Name: "Bia", Email: "bia@example.com", Password: "bia-na-estrada"})
+	assert.NoError(t, err, "an e-mail of 3 letters is too short to rule passwords out")
+}
+
+func TestPasswordHasEmail(t *testing.T) {
+	assert.True(t, auth.PasswordHasEmail("Maria.Souza!2026", "maria.souza@example.com"))
+	assert.True(t, auth.PasswordHasEmail("joão-entregas", "JOÃO@example.com"))
+	assert.False(t, auth.PasswordHasEmail("caminhao-azul-9", "maria.souza@example.com"))
+	assert.False(t, auth.PasswordHasEmail("ana-12345678", "ana@example.com"), "too short to count")
 }
 
 func ptr[T any](v T) *T { return &v }
