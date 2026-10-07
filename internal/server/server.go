@@ -62,7 +62,7 @@ func New(d Deps) http.Handler {
 	if opts.TrustProxy {
 		r.Use(trustedProxy)
 	}
-	r.Use(middleware.Logger, middleware.Recoverer)
+	r.Use(requestLog, recoverer)
 	r.Use(securityHeaders(opts.Production), corsPolicy(opts.CORSOrigins))
 	limit := func(name string, requests int) func(http.Handler) http.Handler {
 		return rateLimit(opts.Redis, name, requests)

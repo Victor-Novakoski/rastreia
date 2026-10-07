@@ -78,6 +78,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wait > 0 {
+		httpx.AddLogAttrs(r.Context(), slog.String("reason", "login locked"), slog.String("email_hash", emailFingerprint(email)))
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		httpx.Error(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
 		return
@@ -98,7 +99,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		if err := h.guard.Fail(r.Context(), email); err != nil {
 			slog.Error("login guard", "err", err)
 		}
-		slog.Warn("login failed", "email_hash", emailFingerprint(email), "ip", r.RemoteAddr)
+		httpx.AddLogAttrs(r.Context(), slog.String("reason", "wrong e-mail or password"), slog.String("email_hash", emailFingerprint(email)))
 		httpx.Error(w, http.StatusUnauthorized, "invalid e-mail or password")
 		return
 	}

@@ -29,7 +29,7 @@ Backlog em ordem. Só se trabalha na etapa atual; o que surgir no caminho entra 
 - [x] `ReadTimeout`, `WriteTimeout` e `IdleTimeout` no servidor (#22)
 - [x] Postgres do compose publicado só em `127.0.0.1` (#25)
 - [x] Falha de login no log, sem o e-mail em claro (#26)
-- [ ] Logar também 401, 403 e 429 (#26)
+- [x] Logar também 401, 403 e 429 (#26)
 
 ## Etapa 2 — Eventos e rastreio público ✅
 
@@ -109,6 +109,7 @@ Rota do dia como nos apps de entrega grandes ([PRD](PRD.md) RF18 a RF21), sem se
 O que sobrou do backlog antes do deploy, mais o que a revisão geral do código encontrou.
 
 - [x] Busca de entrega por código, nome ou e-mail do destinatário no painel, sem diferenciar acentos ([PRD](PRD.md) RF22)
+- [x] Log de cada requisição em JSON, com 401, 403 e 429 como aviso e o motivo, sem código de rastreio nem query string (#26)
 
 ## Etapa 7 — Deploy na AWS
 

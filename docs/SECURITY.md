@@ -136,7 +136,7 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Feito**
 - Erro inesperado vira `500 {"error":"internal error"}`; o detalhe só vai para o log.
-- Pânico é capturado pelo middleware `Recoverer`, sem stack trace na resposta.
+- Pânico é capturado por um middleware que responde 500 e loga a pilha, sem stack trace na resposta.
 - Login não diz se o e-mail existe (pela mensagem).
 
 **Falta**
@@ -252,12 +252,16 @@ Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, en
 
 ## 26. Logs e auditoria — 🟡
 
-**Feito:** logs estruturados em JSON com request ID; erro interno logado com detalhe; falha de login logada com IP e impressão do e-mail.
+**Feito**
+- Todo log sai em JSON pelo `slog`, com uma linha por requisição (`internal/server/log.go`): método, rota, status, duração, IP, request ID e, nas rotas autenticadas, quem fez (`user_id` e `carrier_id`).
+- 401, 403 e 429 saem como aviso, com a mensagem `request denied` e o motivo (`missing token`, `invalid token`, `role driver not allowed`, `rate limit login`, `login locked`, `wrong e-mail or password`). Dá para filtrar por eles e criar alertas. Erros 5xx saem como erro, e pânico vem com a pilha.
+- Falha de login leva o IP e uma impressão do e-mail (SHA-256 cortado), nunca o e-mail.
+- O log grava a rota (`/public/tracking/{code}`), não o caminho, e nunca a query string: código de rastreio e a busca do painel (que pode ter o nome do destinatário) ficam de fora. Sem senha, token ou corpo de requisição no log. Testado em `internal/server`.
+- WebSocket do painel recusado (token inválido na primeira mensagem) também gera um aviso, `websocket denied`.
 
 **Falta**
-- Logar também 429, 403 e token inválido de forma pesquisável. Sem senha, token ou dado pessoal no log.
 - Auditoria de negócio da edição de entregas (`PATCH`). Mudanças de status já ficam em `delivery_events`, com quem fez e quando.
-- Alertas em produção para pico de falhas de login e de 5xx.
+- Alertas em produção para pico de falhas de login e de 5xx (etapa 7).
 
 ## 27. LGPD e retenção de dados — ✅
 

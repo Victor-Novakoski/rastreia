@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
 )
@@ -87,6 +88,7 @@ func (s *Server) StreamAuth(w http.ResponseWriter, r *http.Request, authorize Au
 func (s *Server) stream(w http.ResponseWriter, r *http.Request, topic string, authorize Authorize) {
 	ip := clientIP(r)
 	if !s.acquire(ip) {
+		httpx.AddLogAttrs(r.Context(), slog.String("reason", "too many websockets"))
 		httpx.Error(w, http.StatusTooManyRequests, "too many open connections")
 		return
 	}
@@ -105,6 +107,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, topic string, au
 		var exp time.Time
 		topic, exp, err = readAuth(ctx, c, authorize)
 		if err != nil {
+			// The upgrade already answered 101, so the denial gets a line of its own.
+			slog.Warn("websocket denied", "ip", ip, "request_id", middleware.GetReqID(ctx), "err", err)
 			_ = c.Close(StatusUnauthorized, "unauthorized")
 			return
 		}
