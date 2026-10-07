@@ -177,3 +177,29 @@ func TestPG_ScanRefused(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, r.Stops)
 }
+
+func TestPG_PackageGivenToAnotherDriverLeavesRoute(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+
+	d := f.create(t, "10", 0, nil)
+	stays := f.create(t, "20", 0.01, nil)
+	for _, p := range []delivery.Delivery{d, stays} {
+		_, err := f.routes.Add(ctx, f.ana, p.TrackingCode)
+		require.NoError(t, err)
+	}
+
+	_, err := f.deliveries.Update(ctx, f.owner, d.ID, delivery.UpdateInput{DriverID: &f.bruno.UserID})
+	require.NoError(t, err)
+
+	r, err := f.routes.Today(ctx, f.ana)
+	require.NoError(t, err)
+	assert.Equal(t, [][]int64{{stays.ID}}, ids(r), "ana no longer sees the recipient of bruno's package")
+	assert.Equal(t, 1, r.TotalPackages)
+	_, err = f.routes.Reorder(ctx, f.ana, []int64{stays.ID})
+	require.NoError(t, err, "the order only lists the packages still hers")
+
+	r, err = f.routes.Add(ctx, f.bruno, d.TrackingCode)
+	require.NoError(t, err)
+	assert.Equal(t, [][]int64{{d.ID}}, ids(r))
+}

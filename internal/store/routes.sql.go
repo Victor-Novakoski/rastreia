@@ -108,7 +108,8 @@ func (q *Queries) EnsureRoute(ctx context.Context, arg EnsureRouteParams) (Route
 const listRouteItems = `-- name: ListRouteItems :many
 SELECT d.id, d.tracking_code, d.recipient_name, d.recipient_email, d.address, d.status, d.driver_id, d.created_at, d.updated_at, d.completed_at, d.anonymized_at, d.carrier_id, d.recipient_phone, d.postal_code, d.street, d.number, d.complement, d.district, d.city, d.state, d.address_reference, d.latitude, d.longitude, ri.position
 FROM route_items ri
-JOIN deliveries d ON d.id = ri.delivery_id
+JOIN routes r ON r.id = ri.route_id
+JOIN deliveries d ON d.id = ri.delivery_id AND d.driver_id = r.driver_id
 WHERE ri.route_id = $1
 ORDER BY ri.position, ri.added_at
 `
@@ -118,6 +119,9 @@ type ListRouteItemsRow struct {
 	Position int32
 }
 
+// ListRouteItems lists the route's packages in order. A package the carrier
+// gave to another driver after it was scanned leaves the route, so the first
+// driver no longer sees the recipient.
 func (q *Queries) ListRouteItems(ctx context.Context, routeID int64) ([]ListRouteItemsRow, error) {
 	rows, err := q.db.Query(ctx, listRouteItems, routeID)
 	if err != nil {
