@@ -8,8 +8,9 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { LoadError, Loading } from '../../components/States'
 import { ApiError, errorMessage } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { addEvent, listEvents, listMyDeliveries, type Delivery } from '../../lib/deliveries'
-import { actionLabel, retryLabel, useMyDeliveries } from '../../lib/driver'
+import { addEvent, getDelivery, listEvents, type Delivery } from '../../lib/deliveries'
+import { actionLabel, retryLabel } from '../../lib/driver'
+import { routeKey } from '../../lib/route'
 import { fieldErrors } from '../../lib/fields'
 import { formatPhone } from '../../lib/address'
 import { formatDateTime } from '../../lib/format'
@@ -17,23 +18,32 @@ import { nextStatuses, statusInfo, type Status } from '../../lib/status'
 
 export function DriverDeliveryPage() {
   const id = Number(useParams().id)
-  // A API não tem GET /me/deliveries/{id}: a entrega vem da lista do motorista.
-  const deliveries = useMyDeliveries()
-  const delivery = deliveries.data?.find((d) => d.id === id)
+  const { api } = useAuth()
+  const queryClient = useQueryClient()
+  const valid = Number.isInteger(id) && id > 0
+  const delivery = useQuery({
+    queryKey: ['me', 'deliveries', id],
+    queryFn: ({ signal }) => getDelivery(api, id, signal),
+    enabled: valid,
+    // Vinda da lista, a entrega aparece na hora enquanto a versão nova chega.
+    placeholderData: () => queryClient.getQueryData<Delivery[]>(['me', 'deliveries'])?.find((d) => d.id === id),
+    // Na rua o sinal cai: tenta de novo algumas vezes, mas não quando ela não existe.
+    retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 3,
+  })
 
   return (
     <>
       <Link to="/motorista" className="inline-flex min-h-11 items-center font-medium text-brand-700">
         ← Minhas entregas
       </Link>
-      {deliveries.isPending ? (
-        <Loading label="Carregando entrega" />
-      ) : deliveries.isError ? (
-        <LoadError error={deliveries.error} onRetry={() => void deliveries.refetch()} />
-      ) : !delivery ? (
+      {!valid || (delivery.error instanceof ApiError && delivery.error.status === 404) ? (
         <p className="mt-4 text-lg font-semibold">Entrega não encontrada.</p>
+      ) : delivery.data ? (
+        <Details delivery={delivery.data} />
+      ) : delivery.isError ? (
+        <LoadError error={delivery.error} onRetry={() => void delivery.refetch()} />
       ) : (
-        <Details delivery={delivery} />
+        <Loading label="Carregando entrega" />
       )}
     </>
   )
@@ -93,8 +103,8 @@ function Actions({ delivery: d }: { delivery: Delivery }) {
         // Com sinal ruim, a primeira tentativa pode ter chegado e a resposta
         // não: a repetição recebe 409. Se o status já é o pedido, deu certo.
         if (err instanceof ApiError && err.status === 409) {
-          const fresh = await listMyDeliveries(api)
-          if (fresh.find((x) => x.id === d.id)?.status === input.status) return
+          const fresh = await getDelivery(api, d.id)
+          if (fresh.status === input.status) return
         }
         throw err
       }
@@ -106,7 +116,9 @@ function Actions({ delivery: d }: { delivery: Delivery }) {
       setNote('')
     },
     onSettled: () => {
+      // A lista, esta entrega e a rota mostram o status.
       void queryClient.invalidateQueries({ queryKey: ['me', 'deliveries'] })
+      void queryClient.invalidateQueries({ queryKey: routeKey })
       void queryClient.invalidateQueries({ queryKey: ['events', d.id] })
     },
   })

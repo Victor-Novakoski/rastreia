@@ -506,6 +506,12 @@ paths:
             Search: part of the tracking code or of the recipient's name or e-mail, ignoring case
             and accents ("joao" finds "João"). Adds up with status.
           schema: { type: string, maxLength: 100 }
+        - name: driver
+          in: query
+          description: |
+            "none" for the deliveries nobody was assigned to, or a driver's id for that driver's.
+            Adds up with status and q.
+          schema: { type: string, pattern: "^(none|[1-9][0-9]*)$", example: none }
         - { $ref: "#/components/parameters/page" }
         - { $ref: "#/components/parameters/size" }
       responses:
@@ -543,6 +549,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:
       summary: Get a delivery
+      description: Carriers see every delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       responses:
         "200":
@@ -605,7 +612,10 @@ paths:
         "422": { $ref: "#/components/responses/Invalid" }
   /me/deliveries:
     get:
-      summary: Deliveries assigned to the driver making the request, newest first
+      summary: Deliveries assigned to the driver making the request
+      description: |
+        Open deliveries first, then the delivered ones, newest first in each part, so an old open
+        delivery stays on the first page. Deliveries whose data was erased are left out.
       security: [{ bearer: [] }]
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }

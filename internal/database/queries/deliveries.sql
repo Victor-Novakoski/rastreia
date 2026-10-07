@@ -14,10 +14,14 @@ SELECT * FROM deliveries WHERE id = $1;
 -- e-mail. The service sends it in lower case, without accents and with the
 -- LIKE wildcards escaped; translate drops the same accents from the name
 -- (the letters of foldAccents in internal/delivery), so "joao" finds "João".
+-- unassigned keeps only deliveries without a driver; driver_id, only those
+-- of one driver.
 -- name: ListDeliveries :many
 SELECT * FROM deliveries
 WHERE carrier_id = sqlc.arg('carrier_id')
   AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
+  AND (NOT sqlc.arg('unassigned')::boolean OR driver_id IS NULL)
+  AND (sqlc.narg('driver_id')::bigint IS NULL OR driver_id = sqlc.narg('driver_id')::bigint)
   AND (sqlc.narg('search')::text IS NULL
        OR lower(tracking_code) LIKE '%' || sqlc.narg('search')::text || '%'
        OR lower(translate(recipient_name,
@@ -53,11 +57,15 @@ UPDATE deliveries SET
 WHERE id = sqlc.arg('id') AND anonymized_at IS NULL
 RETURNING *;
 
+-- ListDriverDeliveries lists what is still to do before what was delivered,
+-- so an old open delivery stays on the first page of a busy driver.
+-- Deliveries whose data was erased leave the list: nothing is left to do.
 -- name: ListDriverDeliveries :many
 SELECT * FROM deliveries
 WHERE driver_id = sqlc.arg('driver_id')::bigint
+  AND anonymized_at IS NULL
   AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
-ORDER BY created_at DESC, id DESC
+ORDER BY status = 'delivered', created_at DESC, id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: GetDeliveryByTrackingCode :one

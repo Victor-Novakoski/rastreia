@@ -66,8 +66,13 @@ type Querier interface {
 	// e-mail. The service sends it in lower case, without accents and with the
 	// LIKE wildcards escaped; translate drops the same accents from the name
 	// (the letters of foldAccents in internal/delivery), so "joao" finds "João".
+	// unassigned keeps only deliveries without a driver; driver_id, only those
+	// of one driver.
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
+	// ListDriverDeliveries lists what is still to do before what was delivered,
+	// so an old open delivery stays on the first page of a busy driver.
+	// Deliveries whose data was erased leave the list: nothing is left to do.
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
 	// ListRouteItems lists the route's packages in order. A package the carrier

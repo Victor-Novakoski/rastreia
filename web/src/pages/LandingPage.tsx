@@ -195,7 +195,7 @@ function TrackForm() {
         </button>
       </div>
       {error && (
-        <p id="landing-code-error" className="text-sm text-danger-fg">
+        <p id="landing-code-error" role="alert" className="text-sm text-danger-fg">
           {error}
         </p>
       )}

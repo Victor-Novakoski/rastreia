@@ -2,6 +2,7 @@ package delivery_test
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -197,4 +198,80 @@ func TestPG_SearchByCodeNameOrEmail(t *testing.T) {
 	list, err := svc.List(ctx, owner.CarrierID, delivery.ListInput{Search: "souza", Status: ptr(delivery.StatusDelivered)})
 	require.NoError(t, err)
 	assert.Empty(t, list, "the search and the status filter add up")
+}
+
+func TestPG_ListByDriver(t *testing.T) {
+	svc, pool, owner, ana := setup(t)
+	ctx := context.Background()
+	bia, err := store.New(pool).CreateUser(ctx, store.CreateUserParams{
+		CarrierID: owner.CarrierID, Name: "Bia", Email: "bia@example.com", PasswordHash: "x", Role: auth.RoleDriver,
+	})
+	require.NoError(t, err)
+	create := func(c auth.Claims, in delivery.CreateInput) int64 {
+		d, err := svc.Create(ctx, c, in)
+		require.NoError(t, err)
+		return d.ID
+	}
+	ofAna := create(owner, input(ana.UserID))
+	ofBia := create(owner, input(bia.ID))
+	nobody := create(owner, address())
+	// Another carrier's deliveries stay out, with or without a driver.
+	other := owner
+	other.CarrierID = testdb.Carrier(t, pool)
+	create(other, address())
+
+	ids := func(in delivery.ListInput) []int64 {
+		list, err := svc.List(ctx, owner.CarrierID, in)
+		require.NoError(t, err)
+		out := []int64{}
+		for _, d := range list {
+			out = append(out, d.ID)
+		}
+		return out
+	}
+	assert.Equal(t, []int64{nobody}, ids(delivery.ListInput{Driver: delivery.NoDriver}))
+	assert.Equal(t, []int64{ofAna}, ids(delivery.ListInput{Driver: strconv.FormatInt(ana.UserID, 10)}))
+	assert.Equal(t, []int64{ofBia}, ids(delivery.ListInput{Driver: strconv.FormatInt(bia.ID, 10)}))
+	assert.Equal(t, []int64{nobody}, ids(delivery.ListInput{Driver: delivery.NoDriver, Status: ptr(delivery.StatusPending)}))
+	assert.Equal(t, []int64{nobody, ofBia, ofAna}, ids(delivery.ListInput{}))
+
+	list, err := svc.List(ctx, other.CarrierID, delivery.ListInput{Driver: strconv.FormatInt(ana.UserID, 10)})
+	require.NoError(t, err)
+	assert.Empty(t, list, "a driver of another carrier finds nothing")
+}
+
+func TestPG_DriverListShowsOpenFirst(t *testing.T) {
+	svc, pool, owner, driver := setup(t)
+	ctx := context.Background()
+	create := func() delivery.Delivery {
+		d, err := svc.Create(ctx, owner, input(driver.UserID))
+		require.NoError(t, err)
+		return d
+	}
+	finish := func(d delivery.Delivery) {
+		for _, st := range []string{delivery.StatusPickedUp, delivery.StatusInTransit, delivery.StatusDelivered} {
+			_, err := svc.AddEvent(ctx, driver, d.ID, delivery.EventInput{Status: st})
+			require.NoError(t, err)
+		}
+	}
+	oldOpen := create()
+	done := create()
+	finish(done)
+	newOpen := create()
+	erased := create()
+	_, err := pool.Exec(ctx, "UPDATE deliveries SET anonymized_at = now() WHERE id = $1", erased.ID)
+	require.NoError(t, err)
+
+	list, err := svc.ListForDriver(ctx, driver.UserID, delivery.ListInput{})
+	require.NoError(t, err)
+	ids := make([]int64, len(list))
+	for i, d := range list {
+		ids[i] = d.ID
+	}
+	assert.Equal(t, []int64{newOpen.ID, oldOpen.ID, done.ID}, ids, "open ones first, newest first; erased ones left out")
+
+	first, err := svc.ListForDriver(ctx, driver.UserID, delivery.ListInput{Size: 2})
+	require.NoError(t, err)
+	assert.Len(t, first, 2)
+	assert.Equal(t, oldOpen.ID, first[1].ID, "an old open delivery stays on the first page")
 }

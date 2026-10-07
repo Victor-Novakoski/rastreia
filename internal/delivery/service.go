@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -175,8 +176,30 @@ type ListInput struct {
 	// name or e-mail, ignoring case and accents. Only the carrier's list
 	// uses it.
 	Search string
+	// Driver is "none" for deliveries without a driver or a driver's id.
+	// Only the carrier's list uses it.
+	Driver string
 	Page   int
 	Size   int
+}
+
+// NoDriver is the Driver filter for deliveries nobody was assigned to.
+const NoDriver = "none"
+
+// driverFilter turns Driver into the query's filters; ok is false when it
+// is neither "none" nor an id.
+func (in ListInput) driverFilter() (unassigned bool, driverID *int64, ok bool) {
+	switch in.Driver {
+	case "":
+		return false, nil, true
+	case NoDriver:
+		return true, nil, true
+	}
+	id, err := strconv.ParseInt(in.Driver, 10, 64)
+	if err != nil || id <= 0 {
+		return false, nil, false
+	}
+	return false, &id, true
 }
 
 type Service struct {
@@ -289,8 +312,10 @@ func (s *Service) List(ctx context.Context, carrierID int64, in ListInput) ([]De
 		return nil, err
 	}
 	limit, offset := in.page()
+	unassigned, driverID, _ := in.driverFilter()
 	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
-		CarrierID: carrierID, Status: in.Status, Search: searchPattern(in.Search), Limit: limit, Offset: offset,
+		CarrierID: carrierID, Status: in.Status, Search: searchPattern(in.Search),
+		Unassigned: unassigned, DriverID: driverID, Limit: limit, Offset: offset,
 	})
 	return fromStoreList(rows), err
 }
@@ -315,6 +340,8 @@ func (in ListInput) validate() error {
 	}
 	v.Check(in.Page <= maxPage, "page", "must be at most 10000")
 	v.Check(utf8.RuneCountInString(in.Search) <= maxSearch, "q", "must have at most 100 characters")
+	_, _, ok := in.driverFilter()
+	v.Check(ok, "driver", `must be "none" or a driver id`)
 	return v.Err()
 }
 

@@ -92,6 +92,35 @@ describe('TrackingPage', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
+  it('depois de uma queda, busca de novo o que mudou enquanto estava sem conexão', async () => {
+    const tracking = {
+      tracking_code: 'RS7K2M9QXA4P',
+      status: 'in_transit',
+      recipient_first_name: 'Maria',
+      updated_at: '2026-10-01T15:00:00Z',
+      events: [{ status: 'in_transit', created_at: '2026-10-01T15:00:00Z' }],
+    }
+    const fetch = mockFetch(200, tracking)
+    renderAt('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
+    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.open())
+
+    // Caiu; enquanto isso a entrega foi feita e o aviso se perdeu.
+    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.drop())
+    fetch.mockResolvedValue(
+      Response.json({
+        ...tracking,
+        status: 'delivered',
+        updated_at: '2026-10-01T18:00:00Z',
+        events: [...tracking.events, { status: 'delivered', created_at: '2026-10-01T18:00:00Z' }],
+      }),
+    )
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2), { timeout: 3000 })
+    act(() => FakeWebSocket.instances[1].open())
+    await vi.waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Entregue'))
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('código inexistente não abre WebSocket', async () => {
     mockFetch(404, { error: 'not found' })
     renderAt('/rastreio/RS7K2M9QXA4P')

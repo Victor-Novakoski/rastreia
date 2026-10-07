@@ -16,12 +16,25 @@ import { qrDataURL, trackingURL } from '../../lib/qr'
  */
 export function LabelPage() {
   const id = Number(useParams().id)
+  const valid = Number.isInteger(id) && id > 0
   const { api } = useAuth()
   const delivery = useQuery({
     queryKey: ['delivery', id],
     queryFn: ({ signal }) => getDelivery(api, id, signal),
-    enabled: Number.isInteger(id) && id > 0,
+    enabled: valid,
   })
+  const me = useMe()
+  const code = delivery.data?.tracking_code
+  const qr = useQuery({
+    queryKey: ['qr', code],
+    queryFn: () => qrDataURL(trackingURL(code!)),
+    enabled: code !== undefined,
+    staleTime: Infinity,
+  })
+  // Etiqueta sem QR-code não serve: o motorista não consegue bipar o pacote.
+  // Por isso só imprime com tudo pronto, e uma falha aparece em vez da caixa vazia.
+  const failed = [delivery, me, qr].filter((q) => q.isError)
+  const ready = delivery.data && me.data && qr.data ? { delivery: delivery.data, carrier: me.data.carrier.name, qr: qr.data } : null
 
   return (
     <div className="mx-auto max-w-md px-4 py-6 print:m-0 print:max-w-none print:p-0">
@@ -29,44 +42,34 @@ export function LabelPage() {
         <Link to={`/transportadora/entregas/${id}`} className="font-medium text-brand-700 hover:underline">
           ← Entrega
         </Link>
-        {delivery.data && <Button onClick={() => window.print()}>Imprimir</Button>}
+        {ready && <Button onClick={() => window.print()}>Imprimir</Button>}
       </div>
-      {!Number.isInteger(id) || id <= 0 || (delivery.error instanceof ApiError && delivery.error.status === 404) ? (
+      {!valid || (delivery.error instanceof ApiError && delivery.error.status === 404) ? (
         <p className="text-lg font-semibold">Entrega não encontrada.</p>
-      ) : delivery.isPending ? (
-        <Loading label="Carregando etiqueta" />
-      ) : delivery.isError ? (
-        <LoadError error={delivery.error} onRetry={() => void delivery.refetch()} />
+      ) : failed.length > 0 ? (
+        <LoadError error={failed[0].error} onRetry={() => failed.forEach((q) => void q.refetch())} />
+      ) : ready ? (
+        <Label {...ready} />
       ) : (
-        <Label delivery={delivery.data} />
+        <Loading label="Carregando etiqueta" />
       )}
     </div>
   )
 }
 
-function Label({ delivery: d }: { delivery: Delivery }) {
-  const me = useMe()
-  const qr = useQuery({
-    queryKey: ['qr', d.tracking_code],
-    queryFn: () => qrDataURL(trackingURL(d.tracking_code)),
-    staleTime: Infinity,
-  })
+function Label({ delivery: d, carrier, qr }: { delivery: Delivery; carrier: string; qr: string }) {
   const structured = d.postal_code !== ''
   return (
     <article
       aria-label="Etiqueta"
       className="flex flex-col gap-3 border-2 border-slate-900 bg-white p-4 text-slate-900 print:border-0"
     >
-      <header className="flex items-center justify-between border-b-2 border-slate-900 pb-2">
-        <span className="text-lg font-bold">{me.data?.carrier.name ?? 'Rastreia'}</span>
-        <span className="text-sm">Pedido {d.id}</span>
+      {/* O id interno não vai na etiqueta: em sequência, ele contaria o volume da transportadora. */}
+      <header className="border-b-2 border-slate-900 pb-2">
+        <span className="text-lg font-bold">{carrier}</span>
       </header>
       <div className="flex items-center gap-4">
-        {qr.data ? (
-          <img src={qr.data} alt={`QR-code da entrega ${d.tracking_code}`} className="size-36 shrink-0" />
-        ) : (
-          <div className="size-36 shrink-0 bg-slate-100" />
-        )}
+        <img src={qr} alt={`QR-code da entrega ${d.tracking_code}`} className="size-36 shrink-0" />
         <div className="min-w-0">
           <p className="text-sm">Código de rastreio</p>
           <p className="font-mono text-xl font-bold tracking-wider break-all">{d.tracking_code}</p>

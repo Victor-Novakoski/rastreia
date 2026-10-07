@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { StatusBadge } from '../../components/StatusBadge'
 import { Empty, LoadError, Loading } from '../../components/States'
 import { useAuth } from '../../lib/auth'
-import { listDeliveries, pageSize } from '../../lib/deliveries'
+import { listDeliveries, pageSize, type DriverFilter } from '../../lib/deliveries'
 import { formatDateTime } from '../../lib/format'
 import { useDrivers } from '../../lib/queries'
 import { statuses, statusInfo, type Status } from '../../lib/status'
@@ -14,6 +14,7 @@ export function DeliveriesPage() {
   const [params, setParams] = useSearchParams()
   const status = statuses.find((s) => s === params.get('status'))
   const search = params.get('q') ?? ''
+  const driver = driverFilter(params.get('driver'))
   const page = Math.max(1, Number(params.get('page')) || 1)
 
   // O campo acompanha a URL quando ela muda por fora (voltar, link).
@@ -25,20 +26,24 @@ export function DeliveriesPage() {
   }
 
   const deliveries = useQuery({
-    queryKey: ['deliveries', { status, search, page }],
-    queryFn: ({ signal }) => listDeliveries(api, { status, search, page }, signal),
+    queryKey: ['deliveries', { status, search, driver, page }],
+    queryFn: ({ signal }) => listDeliveries(api, { status, search, driver, page }, signal),
     placeholderData: keepPreviousData,
   })
+  // Enquanto a página nova não chega, a tabela mostra a anterior apagada e
+  // os botões esperam: dois cliques em Próxima não pulam uma página.
+  const changing = deliveries.isPlaceholderData
   const drivers = useDrivers()
   const driverName = (id: number | null) =>
     id === null ? '—' : (drivers.data?.find((d) => d.id === id)?.name ?? `#${id}`)
 
-  function update(next: { status?: Status | ''; search?: string; page?: number }) {
+  function update(next: { status?: Status | ''; search?: string; driver?: string; page?: number }) {
     setParams((prev) => {
       const p = new URLSearchParams(prev)
       for (const [key, value] of [
         ['status', next.status],
         ['q', next.search],
+        ['driver', next.driver],
       ] as const) {
         if (value === undefined) continue
         if (value) p.set(key, value)
@@ -111,6 +116,28 @@ export function DeliveriesPage() {
             ))}
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="driver-filter" className="font-medium">
+            Motorista
+          </label>
+          <select
+            id="driver-filter"
+            value={driver ?? ''}
+            onChange={(e) => update({ driver: e.target.value })}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3"
+          >
+            <option value="">Todos</option>
+            <option value="none">Sem motorista</option>
+            {drivers.data?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+            {typeof driver === 'number' && drivers.data && !drivers.data.some((d) => d.id === driver) && (
+              <option value={driver}>#{driver}</option>
+            )}
+          </select>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -120,14 +147,19 @@ export function DeliveriesPage() {
           <LoadError error={deliveries.error} onRetry={() => void deliveries.refetch()} />
         ) : rows.length === 0 ? (
           <Empty>
-            {search
-              ? `Nenhuma entrega encontrada para “${search}”.`
-              : status || page > 1
-                ? 'Nenhuma entrega com esse filtro.'
-                : 'Nenhuma entrega cadastrada ainda.'}
+            {page > 1
+              ? 'Não há mais entregas. Volte para a página anterior.'
+              : search
+                ? `Nenhuma entrega encontrada para “${search}”.`
+                : status || driver !== undefined
+                  ? 'Nenhuma entrega com esse filtro.'
+                  : 'Nenhuma entrega cadastrada ainda.'}
           </Empty>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <div
+            aria-busy={changing}
+            className={`overflow-x-auto rounded-lg border border-slate-200 bg-white transition-opacity ${changing ? 'opacity-60' : ''}`}
+          >
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
                 <tr>
@@ -166,7 +198,7 @@ export function DeliveriesPage() {
       <nav className="mt-4 flex items-center justify-between" aria-label="Paginação">
         <button
           type="button"
-          disabled={page <= 1}
+          disabled={page <= 1 || changing}
           onClick={() => update({ page: page - 1 })}
           className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-medium disabled:opacity-50"
         >
@@ -176,7 +208,7 @@ export function DeliveriesPage() {
         <button
           type="button"
           // A API não devolve o total: página incompleta é a última.
-          disabled={rows.length < pageSize}
+          disabled={rows.length < pageSize || changing}
           onClick={() => update({ page: page + 1 })}
           className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-medium disabled:opacity-50"
         >
@@ -185,4 +217,10 @@ export function DeliveriesPage() {
       </nav>
     </>
   )
+}
+
+/** O filtro de motorista da URL: "none" ou um id; qualquer outra coisa é ignorada. */
+function driverFilter(value: string | null): DriverFilter | undefined {
+  if (value === 'none') return 'none'
+  return value && /^[1-9]\d*$/.test(value) ? Number(value) : undefined
 }

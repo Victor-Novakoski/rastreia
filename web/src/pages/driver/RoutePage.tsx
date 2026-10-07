@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { Link } from 'react-router'
 import { Alert } from '../../components/Alert'
 import { Button } from '../../components/Button'
@@ -68,6 +68,19 @@ function RouteView({ route }: { route: Route }) {
     onError: (err) => setNotice({ tone: 'danger', text: errorMessage(err) }),
   })
 
+  /**
+   * A rota mudou em outro lugar (outro aparelho, ou a aba ficou aberta de um
+   * dia para o outro): a ordem enviada já não bate com a do servidor.
+   */
+  function changeFailed(err: unknown) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 422)) {
+      void queryClient.invalidateQueries({ queryKey: routeKey })
+      setNotice({ tone: 'danger', text: 'A rota mudou. Atualizamos a lista, confira e tente de novo.' })
+      return
+    }
+    setNotice({ tone: 'danger', text: errorMessage(err) })
+  }
+
   const reorder = useMutation({
     mutationFn: (stops: Stop[]) => reorderRoute(api, packageIDs(stops)),
     onMutate: (stops) => {
@@ -78,14 +91,14 @@ function RouteView({ route }: { route: Route }) {
     onSuccess: saved,
     onError: (err, _, before) => {
       if (before) saved(before)
-      setNotice({ tone: 'danger', text: errorMessage(err) })
+      changeFailed(err)
     },
   })
 
   const remove = useMutation({
     mutationFn: (id: number) => removeFromRoute(api, id),
     onSuccess: saved,
-    onError: (err) => setNotice({ tone: 'danger', text: errorMessage(err) }),
+    onError: changeFailed,
   })
 
   function submit(e: FormEvent) {
@@ -208,39 +221,88 @@ type StopListProps = {
   busy: boolean
 }
 
+/** offset vai do dedo ao meio do cartão arrastado. */
+type Drag = { index: number; list: Stop[]; offset: number }
+
 /**
  * Lista das paradas. Arrastar pela alça funciona no toque e no mouse (eventos
  * de ponteiro, porque o arrastar do HTML não funciona no celular); as setas
  * fazem o mesmo para quem não consegue arrastar.
  */
 function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
-  const [drag, setDrag] = useState<{ index: number; list: Stop[] } | null>(null)
+  const [drag, setDrag] = useState<Drag | null>(null)
+  // O último estado do arraste, para os eventos da janela, que não veem o
+  // estado novo do React.
+  const current = useRef<Drag | null>(null)
+  const stopListening = useRef<(() => void) | null>(null)
   const items = useRef<(HTMLLIElement | null)[]>([])
   const shown = drag?.list ?? stops
 
-  function start(e: PointerEvent, index: number) {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    setDrag({ index, list: stops })
+  useEffect(() => () => stopListening.current?.(), [])
+
+  function update(next: Drag | null) {
+    current.current = next
+    setDrag(next)
   }
 
-  function over(e: PointerEvent) {
-    if (!drag) return
-    let target = drag.list.length - 1
-    for (let i = 0; i < drag.list.length; i++) {
-      const rect = items.current[i]?.getBoundingClientRect()
-      if (rect && e.clientY < rect.top + rect.height / 2) {
-        target = i
-        break
-      }
+  function start(e: PointerEvent, index: number) {
+    if (current.current) return // um dedo de cada vez
+    const card = items.current[index]?.getBoundingClientRect()
+    if (!card) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    update({ index, list: stops, offset: card.top + card.height / 2 - e.clientY })
+    // Ao descer, o React move no DOM o próprio cartão arrastado e o navegador
+    // perde a captura do ponteiro; ouvir na janela segue o dedo até o fim.
+    const pointer = e.pointerId
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId === pointer) over(ev.clientY)
     }
-    if (target !== drag.index) setDrag({ index: target, list: move(drag.list, drag.index, target) })
+    const onUp = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId === pointer) end()
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    stopListening.current = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      stopListening.current = null
+    }
+  }
+
+  /**
+   * O cartão vai para o lugar cujo meio fica mais perto do meio dele sob o
+   * dedo. Os lugares saem da altura dos outros cartões, que não muda ao
+   * trocar, então a troca não vai e volta quando as alturas diferem.
+   */
+  function over(y: number) {
+    const d = current.current
+    if (!d) return
+    const rects = d.list.map((_, i) => items.current[i]?.getBoundingClientRect())
+    if (rects.some((r) => !r)) return
+    const boxes = rects as DOMRect[]
+    const gap = boxes.length > 1 ? boxes[1].top - boxes[0].bottom : 0
+    const own = boxes[d.index].height
+    const others = boxes.filter((_, i) => i !== d.index)
+    const center = y + d.offset
+    let target = 0
+    let top = boxes[0].top // onde a lista começa
+    for (const other of others) {
+      // Entre o meio do cartão neste lugar e no próximo.
+      if (center < top + own / 2 + (other.height + gap) / 2) break
+      target++
+      top += other.height + gap
+    }
+    if (target !== d.index) update({ ...d, index: target, list: move(d.list, d.index, target) })
   }
 
   function end() {
-    if (!drag) return
-    const changed = drag.list.some((s, i) => s !== stops[i])
-    setDrag(null)
-    if (changed) onReorder(drag.list)
+    stopListening.current?.()
+    const d = current.current
+    if (!d) return
+    update(null)
+    if (d.list.some((s, i) => s !== stops[i])) onReorder(d.list)
   }
 
   return (
@@ -271,7 +333,7 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
                   aria-label={`Subir parada ${s.number}`}
                   disabled={i === 0 || !!drag}
                   onClick={() => onReorder(move(stops, i, i - 1))}
-                  className="flex size-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                  className="flex size-11 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30"
                 >
                   ▲
                 </button>
@@ -280,7 +342,7 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
                   aria-label={`Descer parada ${s.number}`}
                   disabled={i === shown.length - 1 || !!drag}
                   onClick={() => onReorder(move(stops, i, i + 1))}
-                  className="flex size-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                  className="flex size-11 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30"
                 >
                   ▼
                 </button>
@@ -290,10 +352,7 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
                 tabIndex={-1}
                 aria-label={`Arrastar parada ${s.number}`}
                 onPointerDown={(e) => start(e, i)}
-                onPointerMove={over}
-                onPointerUp={end}
-                onPointerCancel={end}
-                className="flex h-18 w-9 cursor-grab touch-none items-center justify-center text-xl text-slate-400 select-none active:cursor-grabbing"
+                className="flex h-22 w-10 cursor-grab touch-none items-center justify-center text-xl text-slate-400 select-none active:cursor-grabbing"
               >
                 ⠿
               </span>
@@ -302,13 +361,13 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
           <ul className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2">
             {s.packages.map((p) => (
               <li key={p.id} className="flex flex-col gap-1">
-                <div className="flex items-start gap-2">
+                <div className="flex items-center gap-2">
                   <span className="rounded-md bg-brand-50 px-2 py-0.5 font-mono text-sm font-bold text-brand-800">
                     #{p.position}
                   </span>
                   <Link
                     to={`/motorista/entregas/${p.id}`}
-                    className="min-w-0 flex-1 font-medium text-brand-700 underline-offset-2 hover:underline"
+                    className="flex min-h-11 min-w-0 flex-1 items-center font-medium text-brand-700 underline-offset-2 hover:underline"
                   >
                     {p.recipient_name}
                   </Link>
@@ -321,7 +380,7 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
                 )}
                 <div className="flex flex-wrap items-center gap-x-4 text-sm">
                   {p.recipient_phone && (
-                    <a href={`tel:+55${p.recipient_phone}`} className="inline-flex min-h-9 items-center font-medium text-brand-700">
+                    <a href={`tel:+55${p.recipient_phone}`} className="inline-flex min-h-11 items-center font-medium text-brand-700">
                       Ligar {formatPhone(p.recipient_phone)}
                     </a>
                   )}
@@ -329,7 +388,7 @@ function StopList({ stops, onReorder, onRemove, busy }: StopListProps) {
                     type="button"
                     disabled={busy}
                     onClick={() => onRemove(p.id)}
-                    className="inline-flex min-h-9 items-center font-medium text-slate-600 disabled:opacity-50"
+                    className="inline-flex min-h-11 items-center font-medium text-slate-600 disabled:opacity-50"
                   >
                     Tirar da rota
                   </button>
@@ -351,7 +410,7 @@ function MapLink({ stop: s }: { stop: Stop }) {
       href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-sm font-medium text-brand-700 underline underline-offset-2"
+      className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700 underline underline-offset-2"
     >
       Navegar até aqui
     </a>

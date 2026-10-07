@@ -15,7 +15,9 @@ let refreshing: Promise<Session | null> | null = null
  * vezes derruba a sessão na API.
  */
 export function refreshSession(): Promise<Session | null> {
-  refreshing ??= request<SessionResponse>('/auth/refresh', { method: 'POST', withCredentials: true })
+  refreshing ??= oneTabAtATime(() =>
+    request<SessionResponse>('/auth/refresh', { method: 'POST', withCredentials: true }),
+  )
     .then(toSession)
     .catch((err: unknown) => {
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return null
@@ -25,6 +27,16 @@ export function refreshSession(): Promise<Session | null> {
       refreshing = null
     })
   return refreshing
+}
+
+/**
+ * Abas abertas juntas (vários links abertos de uma vez, o navegador
+ * restaurando a janela) renovariam com o mesmo cookie, e a API entende o
+ * segundo uso como roubo e derruba a sessão de todas. A trava do navegador
+ * faz uma aba esperar a outra: quando chega a vez, o cookie já é o novo.
+ */
+function oneTabAtATime<T>(renew: () => Promise<T>): Promise<T> {
+  return navigator.locks ? navigator.locks.request('rastreia-refresh', renew) : renew()
 }
 
 export async function loginRequest(email: string, password: string): Promise<Session> {
@@ -52,6 +64,21 @@ export async function signUpRequest(input: SignUpInput): Promise<Session> {
 
 export function logoutRequest(): Promise<void> {
   return request<void>('/auth/logout', { method: 'POST', withCredentials: true })
+}
+
+/** As duas sessões são da mesma conta? Compara o dono (sub) dos tokens. */
+export function sameUser(a: Session, b: Session): boolean {
+  return a.role === b.role && tokenSubject(a.token) === tokenSubject(b.token)
+}
+
+function tokenSubject(token: string): string | null {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const { sub } = JSON.parse(atob(payload)) as { sub?: unknown }
+    return typeof sub === 'string' ? sub : null
+  } catch {
+    return null
+  }
 }
 
 function toSession(res: SessionResponse): Session {
