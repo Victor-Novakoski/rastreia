@@ -14,8 +14,9 @@ type Querier interface {
 	// changes nothing and affects no rows.
 	AddRouteItem(ctx context.Context, arg AddRouteItemParams) (int64, error)
 	// AnonymizeDeliveries erases the recipient of deliveries finished before
-	// the given time, and the drivers' notes, which are free text and may name
-	// people. Returns how many deliveries were anonymized.
+	// the given time, the drivers' notes, which are free text and may name
+	// people, and the browsers still following them (a failed delivery keeps
+	// them). Returns how many deliveries were anonymized.
 	AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error)
 	// ClaimDelivery assigns a delivery with no driver to the driver who scanned
 	// it; one that already has a driver is left alone.
@@ -37,6 +38,13 @@ type Querier interface {
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteExpiredIdempotencyKey(ctx context.Context, arg DeleteExpiredIdempotencyKeyParams) error
+	// DeleteExpiredRefreshTokens drops the refresh tokens that no longer log
+	// anyone in. Reuse is only checked on tokens that have not expired, so
+	// nothing is lost.
+	DeleteExpiredRefreshTokens(ctx context.Context) (int64, error)
+	// DeleteOldIdempotencyKeys drops the keys older than the 24 hours in which a
+	// retry can still use them.
+	DeleteOldIdempotencyKeys(ctx context.Context) (int64, error)
 	DeletePushSubscription(ctx context.Context, arg DeletePushSubscriptionParams) error
 	DeletePushSubscriptionByID(ctx context.Context, id int64) error
 	DeletePushSubscriptionsByCode(ctx context.Context, trackingCode string) error
@@ -59,6 +67,9 @@ type Querier interface {
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
+	// ListRouteItems lists the route's packages in order. A package the carrier
+	// gave to another driver after it was scanned leaves the route, so the first
+	// driver no longer sees the recipient.
 	ListRouteItems(ctx context.Context, routeID int64) ([]ListRouteItemsRow, error)
 	MarkEventsPublished(ctx context.Context, ids []int64) error
 	RemoveRouteItem(ctx context.Context, arg RemoveRouteItemParams) (int64, error)

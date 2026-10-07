@@ -55,6 +55,14 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, "UPDATE deliveries SET created_at = now() - interval '200 days' WHERE id = $1", open.ID)
 	require.NoError(t, err)
+	follow := func(d delivery.Delivery) {
+		err := q.UpsertPushSubscription(ctx, store.UpsertPushSubscriptionParams{
+			DeliveryID: d.ID, Endpoint: "https://fcm.googleapis.com/fcm/send/" + d.TrackingCode, P256dh: "k", Auth: "a",
+		})
+		require.NoError(t, err)
+	}
+	follow(old)
+	follow(open)
 
 	job := retention.NewJob(q, 90*24*time.Hour)
 	n, err := job.Once(ctx)
@@ -82,6 +90,11 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Maria Souza", d.RecipientName)
 	}
+	for d, want := range map[int64]int64{old.ID: 0, open.ID: 1} {
+		n, err := q.CountPushSubscriptions(ctx, d)
+		require.NoError(t, err)
+		assert.Equal(t, want, n, "only the anonymized delivery loses its browsers")
+	}
 
 	// Erased deliveries no longer change, or the recipient's data could come back.
 	_, err = svc.AddEvent(ctx, owner, old.ID, delivery.EventInput{Status: delivery.StatusInTransit})
@@ -93,6 +106,43 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	n, err = job.Once(ctx)
 	require.NoError(t, err)
 	assert.Zero(t, n, "runs again without touching it")
+}
+
+func TestPG_DeletesExpiredKeysAndTokens(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	q := store.New(pool)
+	u, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: testdb.Carrier(t, pool), Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier})
+	require.NoError(t, err)
+
+	for _, key := range []string{"old", "new"} {
+		_, err := q.ReserveIdempotencyKey(ctx, store.ReserveIdempotencyKeyParams{UserID: u.ID, Key: key, RequestHash: "h"})
+		require.NoError(t, err)
+	}
+	_, err = pool.Exec(ctx, "UPDATE idempotency_keys SET created_at = now() - interval '25 hours' WHERE key = 'old'")
+	require.NoError(t, err)
+	for i, expires := range []time.Time{time.Now().Add(-time.Minute), time.Now().Add(time.Hour)} {
+		err := q.CreateRefreshToken(ctx, store.CreateRefreshTokenParams{UserID: u.ID, FamilyID: "f", TokenHash: []byte{byte(i)}, ExpiresAt: expires})
+		require.NoError(t, err)
+	}
+
+	_, err = retention.NewJob(q, 90*24*time.Hour).Once(ctx)
+	require.NoError(t, err)
+
+	var keys []string
+	rows, err := pool.Query(ctx, "SELECT key FROM idempotency_keys")
+	require.NoError(t, err)
+	for rows.Next() {
+		var k string
+		require.NoError(t, rows.Scan(&k))
+		keys = append(keys, k)
+	}
+	require.NoError(t, rows.Err())
+	assert.Equal(t, []string{"new"}, keys, "a key still inside its 24 hours stays")
+	var valid, all int
+	err = pool.QueryRow(ctx, "SELECT count(*) FILTER (WHERE expires_at > now()), count(*) FROM refresh_tokens").Scan(&valid, &all)
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 1}, []int{valid, all}, "only the expired token is gone")
 }
 
 func ptrTo[T any](v T) *T { return &v }

@@ -34,16 +34,49 @@ WITH d AS (
 ), e AS (
     UPDATE delivery_events SET note = NULL
     WHERE delivery_id IN (SELECT id FROM d) AND note IS NOT NULL
+), s AS (
+    DELETE FROM push_subscriptions
+    WHERE delivery_id IN (SELECT id FROM d)
 )
 SELECT count(*) FROM d
 `
 
 // AnonymizeDeliveries erases the recipient of deliveries finished before
-// the given time, and the drivers' notes, which are free text and may name
-// people. Returns how many deliveries were anonymized.
+// the given time, the drivers' notes, which are free text and may name
+// people, and the browsers still following them (a failed delivery keeps
+// them). Returns how many deliveries were anonymized.
 func (q *Queries) AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error) {
 	row := q.db.QueryRow(ctx, anonymizeDeliveries, before)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteExpiredRefreshTokens = `-- name: DeleteExpiredRefreshTokens :execrows
+DELETE FROM refresh_tokens WHERE expires_at < now()
+`
+
+// DeleteExpiredRefreshTokens drops the refresh tokens that no longer log
+// anyone in. Reuse is only checked on tokens that have not expired, so
+// nothing is lost.
+func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredRefreshTokens)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteOldIdempotencyKeys = `-- name: DeleteOldIdempotencyKeys :execrows
+DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'
+`
+
+// DeleteOldIdempotencyKeys drops the keys older than the 24 hours in which a
+// retry can still use them.
+func (q *Queries) DeleteOldIdempotencyKeys(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldIdempotencyKeys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
