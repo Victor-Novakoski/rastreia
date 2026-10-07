@@ -62,6 +62,30 @@ describe('connectLive', () => {
     expect(FakeWebSocket.instances[1].sent).toEqual([JSON.stringify({ token: 'novo' })])
   })
 
+  it('renovação que falha não desiste: tenta de novo mais tarde', async () => {
+    let fail = true
+    const token = vi.fn(async (renew: boolean) => {
+      if (!renew) return 'velho'
+      if (fail) {
+        fail = false
+        throw new Error('sem rede')
+      }
+      return 'novo'
+    })
+    connectLive('/live/deliveries', { onMessage: () => {}, token })
+    await flush()
+    FakeWebSocket.instances[0].open()
+    FakeWebSocket.instances[0].drop(UNAUTHORIZED)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(token).toHaveBeenCalledTimes(2)
+    expect(FakeWebSocket.instances).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(token).toHaveBeenLastCalledWith(true)
+    FakeWebSocket.instances[1].open()
+    expect(FakeWebSocket.instances[1].sent).toEqual([JSON.stringify({ token: 'novo' })])
+  })
+
   it('sem sessão não conecta', async () => {
     connectLive('/live/deliveries', { onMessage: () => {}, token: async () => null })
     await flush()

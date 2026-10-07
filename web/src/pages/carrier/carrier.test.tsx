@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { carrierSession, mockApi, renderApp } from '../../test/render'
 import { FakeWebSocket } from '../../test/websocket'
 
@@ -83,7 +83,10 @@ describe('login', () => {
     expect(await screen.findByRole('heading', { name: 'Olá, Carla' })).toBeInTheDocument()
     expect(await screen.findByText('Expresso Sul')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Em andamento\s*6/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Sem motorista\s*2/ })).toHaveAttribute('href', '/transportadora/entregas?status=pending')
+    expect(screen.getByRole('link', { name: /Sem motorista\s*2/ })).toHaveAttribute(
+      'href',
+      '/transportadora/entregas?status=pending&driver=none',
+    )
     expect(screen.queryByRole('heading', { name: 'Primeiros passos' })).not.toBeInTheDocument()
     const call = calls.find((c) => c.path === '/summary')!
     expect(call.headers.get('Authorization')).toBe('Bearer access-token')
@@ -168,6 +171,110 @@ describe('painel', () => {
     await userEvent.selectOptions(screen.getByLabelText('Status'), 'failed')
     await waitFor(() => expect(calls.some((c) => c.path.includes('status=failed'))).toBe(true))
     expect(await screen.findByText('Nenhuma entrega com esse filtro.')).toBeInTheDocument()
+  })
+
+  it('"Sem motorista" da visão geral abre só as pendentes sem motorista', async () => {
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /summary': () => [200, summary],
+      'GET /drivers': () => [200, drivers],
+      'GET /me': () => [200, me],
+      'GET /deliveries': () => [200, [{ ...delivery, status: 'pending', driver_id: null }]],
+    })
+    renderApp('/transportadora')
+    await userEvent.click(await screen.findByRole('link', { name: /Sem motorista\s*2/ }))
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+    const query = new URLSearchParams(calls.findLast((c) => c.path.startsWith('/deliveries?'))!.path.split('?')[1])
+    expect(query.get('status')).toBe('pending')
+    expect(query.get('driver')).toBe('none')
+    expect(screen.getByLabelText('Motorista')).toHaveValue('none')
+
+    // Escolher um motorista troca o filtro e volta para a primeira página.
+    await userEvent.selectOptions(screen.getByLabelText('Motorista'), 'João')
+    await waitFor(() => expect(calls.at(-1)!.path).toContain('driver=2'))
+  })
+
+  it('Próxima espera a página chegar e a página vazia depois da última avisa', async () => {
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /drivers': () => [200, drivers],
+      'GET /deliveries': () => [200, Array.from({ length: 20 }, (_, i) => ({ ...delivery, id: i + 1, tracking_code: `RS7K2M9QXA${String(i).padStart(2, '0')}` }))],
+    })
+    const apiFetch = vi.mocked(globalThis.fetch).getMockImplementation()!
+    let answer!: () => void
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      if (!String(input).includes('page=2')) return apiFetch(input, init)
+      calls.push({ method: 'GET', path: '/deliveries?page=2', body: undefined, headers: new Headers() })
+      return new Promise<Response>((resolve) => (answer = () => resolve(Response.json([]))))
+    })
+    renderApp('/transportadora/entregas')
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA00' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Próxima' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled()
+    expect(screen.getByRole('table').parentElement).toHaveAttribute('aria-busy', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima' }))
+    expect(calls.filter((c) => c.path.includes('page=3'))).toHaveLength(0)
+
+    await act(async () => answer())
+    expect(await screen.findByText('Não há mais entregas. Volte para a página anterior.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeEnabled()
+  })
+
+  it('Sair sem resposta da API mantém a sessão e avisa', async () => {
+    let logoutWorks = false
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /deliveries': () => [200, [delivery]],
+      'GET /drivers': () => [200, drivers],
+      'POST /auth/logout': () => (logoutWorks ? [204] : [503, { error: 'unavailable' }]),
+    })
+    renderApp('/transportadora/entregas')
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+    expect(await screen.findByText('Não deu para sair agora. Confira a conexão e tente de novo.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+
+    logoutWorks = true
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+    expect(await screen.findByRole('heading', { name: 'Entrar no painel' })).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/auth/logout')).toHaveLength(2)
+  })
+
+  it('a sessão que acaba leva junto o cache: a próxima conta não vê nada da anterior', async () => {
+    let session: object | null = carrierSession
+    let deliveries = [delivery]
+    mockApi({
+      'POST /auth/refresh': () => (session ? [200, session] : [401, { error: 'invalid session' }]),
+      'POST /auth/login': () => {
+        session = { ...carrierSession, token: 'outra-conta' }
+        return [200, session]
+      },
+      'GET /deliveries': ({ headers }) =>
+        headers.get('Authorization') === `Bearer ${carrierSession.token}` && session === null
+          ? [401, { error: 'invalid token' }]
+          : [200, deliveries],
+      'GET /drivers': () => [200, drivers],
+      'GET /summary': () => [200, summary],
+      'GET /me': () => [200, me],
+    })
+    renderApp('/transportadora/entregas', undefined, { staleTime: 30_000, refetchOnWindowFocus: false })
+    expect(await screen.findByRole('link', { name: 'RS7K2M9QXA4P' })).toBeInTheDocument()
+
+    // A sessão venceu (ou saiu em outra aba): a próxima chamada recebe 401.
+    session = null
+    deliveries = []
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'failed')
+    expect(await screen.findByRole('heading', { name: 'Entrar no painel' })).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('E-mail'), 'outra@example.com')
+    await userEvent.type(screen.getByLabelText('Senha'), 'senha-da-outra')
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar' }))
+    await userEvent.click(await screen.findByRole('link', { name: 'Entregas' }))
+    expect(await screen.findByText('Nenhuma entrega cadastrada ainda.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'RS7K2M9QXA4P' })).not.toBeInTheDocument()
   })
 
   it('busca por código, nome ou e-mail vai para a API e apagar mostra todas', async () => {
@@ -271,7 +378,7 @@ describe('painel', () => {
     expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({ driver_id: 3 })
   })
 
-  it('mudar o número manda o endereço inteiro', async () => {
+  it('mudar o número manda o endereço inteiro, sem o pino antigo', async () => {
     const full = {
       ...delivery,
       recipient_phone: '11987654321',
@@ -293,8 +400,11 @@ describe('painel', () => {
     })
     renderApp('/transportadora/entregas/1')
     const number = await screen.findByLabelText('Número')
+    expect(screen.getByRole('button', { name: 'Tirar o pino' })).toBeInTheDocument()
     await userEvent.clear(number)
     await userEvent.type(number, '20')
+    // O pino era do número 10: a rota levaria o motorista ao lugar antigo.
+    expect(screen.getByText('O endereço mudou, então o pino saiu do mapa. Ache de novo ou toque no mapa.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
     await screen.findByText('Alterações salvas.')
     expect(calls.find((c) => c.method === 'PATCH')!.body).toEqual({
@@ -306,9 +416,37 @@ describe('painel', () => {
       city: 'São Paulo',
       state: 'SP',
       address_reference: '',
-      latitude: -23.55,
-      longitude: -46.63,
+      latitude: null,
+      longitude: null,
     })
+  })
+
+  it('só vale a resposta do último CEP digitado', async () => {
+    mockApi({ 'POST /auth/refresh': () => [200, carrierSession], 'GET /drivers': () => [200, drivers] })
+    const api = vi.mocked(globalThis.fetch).getMockImplementation()!
+    let answerFirst = () => {}
+    const viaCEP = (body: object) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.includes('/ws/01001000/')) {
+        // O CEP errado responde por último, numa conexão lenta.
+        await new Promise<void>((resolve) => (answerFirst = resolve))
+        return viaCEP({ logradouro: 'Praça da Sé', bairro: 'Sé', localidade: 'São Paulo', uf: 'SP' })
+      }
+      if (url.includes('/ws/01310100/')) {
+        return viaCEP({ logradouro: 'Avenida Paulista', bairro: 'Bela Vista', localidade: 'São Paulo', uf: 'SP' })
+      }
+      return api(input, init)
+    })
+    renderApp('/transportadora/entregas/nova')
+    const cep = await screen.findByLabelText('CEP')
+    await userEvent.type(cep, '01001000')
+    await userEvent.clear(cep)
+    await userEvent.type(cep, '01310100')
+    await waitFor(() => expect(screen.getByLabelText('Rua')).toHaveValue('Avenida Paulista'))
+    await act(async () => answerFirst())
+    expect(screen.getByLabelText('Rua')).toHaveValue('Avenida Paulista')
+    expect(screen.getByLabelText('Bairro')).toHaveValue('Bela Vista')
   })
 
   it('etiqueta mostra o QR-code e o código', async () => {
@@ -363,5 +501,46 @@ describe('painel', () => {
     const before = lists()
     act(() => ws.receive({ delivery_id: 1, status: 'delivered' }))
     await waitFor(() => expect(lists()).toBe(before + 1))
+  })
+})
+
+describe('motoristas', () => {
+  it('cadastra, limpa o formulário e mostra na lista; e-mail repetido aparece no campo', async () => {
+    let list: typeof drivers = []
+    const calls = mockApi({
+      'POST /auth/refresh': () => [200, carrierSession],
+      'GET /drivers': () => [200, list],
+      'POST /drivers': ({ body }) => {
+        const { name, email } = body as { name: string; email: string }
+        if (list.some((d) => d.email === email)) return [409, { error: 'e-mail already in use' }]
+        const created = { id: 2, name, email, role: 'driver', created_at: '2026-10-07T09:00:00Z' }
+        list = [created]
+        return [201, created]
+      },
+    })
+    renderApp('/transportadora/motoristas')
+    expect(await screen.findByText('Nenhum motorista cadastrado ainda.')).toBeInTheDocument()
+
+    const fill = async () => {
+      await userEvent.type(screen.getByLabelText('Nome'), 'João')
+      await userEvent.type(screen.getByLabelText('E-mail'), 'joao@example.com')
+      await userEvent.type(screen.getByLabelText('Senha inicial'), 'senha-do-joao')
+      await userEvent.click(screen.getByRole('button', { name: 'Cadastrar' }))
+    }
+    await fill()
+    expect(await screen.findByText('João foi cadastrado.')).toBeInTheDocument()
+    expect(await screen.findByRole('cell', { name: 'joao@example.com' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Nome')).toHaveValue('')
+    expect(screen.getByLabelText('Senha inicial')).toHaveValue('')
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/drivers')!.body).toEqual({
+      name: 'João',
+      email: 'joao@example.com',
+      password: 'senha-do-joao',
+    })
+
+    await fill()
+    expect(await screen.findByText('Já existe uma conta com esse e-mail.')).toBeInTheDocument()
+    expect(screen.getByLabelText('E-mail')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.queryByText('João foi cadastrado.')).not.toBeInTheDocument()
   })
 })

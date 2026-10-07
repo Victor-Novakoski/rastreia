@@ -60,19 +60,26 @@ export type DeliveryInput = AddressParts & {
 
 export const pageSize = 20
 
-/** `search` procura parte do código ou do nome ou e-mail do destinatário, sem diferenciar acento. */
+/** Filtro de motorista da lista: sem motorista ou o id de um deles. */
+export type DriverFilter = 'none' | number
+
+/**
+ * `search` procura parte do código ou do nome ou e-mail do destinatário, sem
+ * diferenciar acento. Os filtros se somam.
+ */
 export function listDeliveries(
   api: Api,
-  params: { status?: Status; search?: string; page: number },
+  params: { status?: Status; search?: string; driver?: DriverFilter; page: number },
   signal?: AbortSignal,
 ) {
   const q = new URLSearchParams({ page: String(params.page), size: String(pageSize) })
   if (params.status) q.set('status', params.status)
   if (params.search) q.set('q', params.search)
+  if (params.driver !== undefined) q.set('driver', String(params.driver))
   return api<Delivery[]>(`/deliveries?${q}`, { signal })
 }
 
-/** Até 100 entregas do motorista, mais recentes primeiro. */
+/** Até 100 entregas do motorista: as que faltam fazer primeiro, depois as concluídas. */
 export function listMyDeliveries(api: Api, signal?: AbortSignal) {
   return api<Delivery[]>('/me/deliveries?size=100', { signal })
 }

@@ -61,7 +61,7 @@ export function OverviewPage() {
           <Stat
             label="Sem motorista"
             value={summary.data.unassigned}
-            to="/transportadora/entregas?status=pending"
+            to="/transportadora/entregas?status=pending&driver=none"
             tone={summary.data.unassigned > 0 ? 'warning' : undefined}
             hint={summary.data.unassigned > 0 ? 'Aguardando alguém para coletar' : 'Tudo distribuído'}
           />

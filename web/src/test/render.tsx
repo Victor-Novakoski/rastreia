@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, type DefaultOptions } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -32,9 +32,12 @@ export function mockApi(routes: Record<string, Handler>): Call[] {
   return calls
 }
 
-/** A aplicação inteira numa rota, como o navegador veria. */
-export function renderApp(path: string, extra?: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+/**
+ * A aplicação inteira numa rota, como o navegador veria. queries muda o
+ * padrão das consultas, como o staleTime de 30 s do main.tsx.
+ */
+export function renderApp(path: string, extra?: ReactNode, queries?: DefaultOptions['queries']) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, ...queries } } })
   return render(
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={client}>

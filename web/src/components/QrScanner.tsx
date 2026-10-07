@@ -47,12 +47,24 @@ export function QrScanner({ onCode, onClose }: Props) {
         setError('Sem acesso à câmera. Libere a câmera nas configurações do navegador ou digite o código.')
         return
       }
-      if (stopped || !video.current) return
+      if (stopped || !video.current) {
+        // Fechou enquanto a câmera ligava: a limpeza ainda não tinha o stream.
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
       video.current.srcObject = stream
       await video.current.play().catch(() => undefined)
 
       const Native = (window as unknown as { BarcodeDetector?: DetectorClass }).BarcodeDetector
-      const read = Native ? nativeReader(new Native({ formats: ['qr_code'] })) : await jsQRReader()
+      let read: (el: HTMLVideoElement) => Promise<string | null>
+      try {
+        read = Native ? nativeReader(new Native({ formats: ['qr_code'] })) : await jsQRReader()
+      } catch {
+        // O leitor não baixou (sem sinal): a câmera ligada não serviria para nada.
+        stream.getTracks().forEach((t) => t.stop())
+        setError('Não deu para ligar o leitor de QR-code. Digite o código.')
+        return
+      }
       const tick = async () => {
         if (stopped) return
         const el = video.current
@@ -80,7 +92,9 @@ export function QrScanner({ onCode, onClose }: Props) {
         <div className="pointer-events-none absolute inset-10 rounded-xl border-4 border-white/80" />
       </div>
       {error ? (
-        <p className="text-danger-fg">{error}</p>
+        <p role="alert" className="text-danger-fg">
+          {error}
+        </p>
       ) : (
         <p className="text-sm text-slate-600">Aponte para o QR-code da etiqueta. Pode bipar um pacote atrás do outro.</p>
       )}

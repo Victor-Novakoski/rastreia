@@ -41,13 +41,33 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
   const [driver, setDriver] = useState(initial?.driver_id ? String(initial.driver_id) : '')
   const [cepLookup, setCEPLookup] = useState<Lookup>({ state: 'idle' })
   const [mapLookup, setMapLookup] = useState<Lookup>({ state: 'idle' })
+  // O pino saiu porque o endereço mudou.
+  const [pinMoved, setPinMoved] = useState(false)
   const numberInput = useRef<HTMLInputElement>(null)
+  const cepInput = useRef<HTMLInputElement>(null)
+  // Só a resposta do último CEP digitado vale.
+  const cepRequest = useRef(0)
+
+  /**
+   * O pino marca o endereço: se CEP, rua, número, cidade ou UF mudam, ele sai
+   * até ser marcado de novo, senão a rota levaria o motorista ao lugar antigo.
+   */
+  function addressChanged() {
+    if (pin) setPinMoved(true)
+    setPin(null)
+  }
+
+  function placePin(p: LatLng | null) {
+    setPin(p)
+    setPinMoved(false)
+  }
 
   async function fillFromCEP(value: string) {
-    if (digits(value).length !== 8) return
+    const request = ++cepRequest.current
     setCEPLookup({ state: 'loading' })
     try {
       const found = await lookupCEP(value)
+      if (request !== cepRequest.current) return
       if (!found) {
         setCEPLookup({ state: 'error', message: 'CEP não encontrado. Preencha o endereço à mão.' })
         return
@@ -57,11 +77,25 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
       if (found.district) setDistrict(found.district)
       setCity(found.city)
       setUF(found.state)
-      setPin(null)
       setCEPLookup({ state: 'done' })
-      numberInput.current?.focus()
+      // Só leva ao número quem ainda está no CEP, não quem já foi digitar a rua.
+      if (document.activeElement === cepInput.current) numberInput.current?.focus()
     } catch {
+      if (request !== cepRequest.current) return
       setCEPLookup({ state: 'error', message: 'Não deu para buscar o CEP agora. Preencha o endereço à mão.' })
+    }
+  }
+
+  function changeCEP(value: string) {
+    const v = formatCEP(value)
+    setCEP(v)
+    if (digits(v) === digits(cep)) return
+    addressChanged()
+    if (digits(v).length === 8) {
+      void fillFromCEP(v)
+    } else {
+      cepRequest.current++ // a resposta de um CEP anterior não vale mais
+      setCEPLookup({ state: 'idle' })
     }
   }
 
@@ -70,7 +104,7 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
     try {
       const found = await geocode({ street, number, city, state: uf, postal_code: digits(cep) })
       if (found) {
-        setPin(found)
+        placePin(found)
         setMapLookup({ state: 'done' })
       } else {
         setMapLookup({ state: 'error', message: 'Endereço não achado no mapa. Toque no mapa para marcar o lugar.' })
@@ -152,14 +186,11 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
         )}
         <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
           <TextField
+            ref={cepInput}
             label="CEP"
             inputMode="numeric"
             value={cep}
-            onChange={(e) => {
-              const v = formatCEP(e.target.value)
-              setCEP(v)
-              if (digits(v).length === 8 && digits(v) !== digits(cep)) void fillFromCEP(v)
-            }}
+            onChange={(e) => changeCEP(e.target.value)}
             required={addressRequired}
             placeholder="01001-000"
             error={errors.postal_code ?? (cepLookup.state === 'error' ? cepLookup.message : undefined)}
@@ -168,7 +199,10 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
           <TextField
             label="Rua"
             value={street}
-            onChange={(e) => setStreet(e.target.value)}
+            onChange={(e) => {
+              setStreet(e.target.value)
+              addressChanged()
+            }}
             required={addressRequired}
             maxLength={200}
             error={errors.street}
@@ -179,7 +213,10 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
             ref={numberInput}
             label="Número"
             value={number}
-            onChange={(e) => setNumber(e.target.value)}
+            onChange={(e) => {
+              setNumber(e.target.value)
+              addressChanged()
+            }}
             required={addressRequired}
             maxLength={20}
             error={errors.number}
@@ -206,12 +243,24 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
           <TextField
             label="Cidade"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => {
+              setCity(e.target.value)
+              addressChanged()
+            }}
             required={addressRequired}
             maxLength={100}
             error={errors.city}
           />
-          <SelectField label="UF" value={uf} onChange={(e) => setUF(e.target.value)} required={addressRequired} error={errors.state}>
+          <SelectField
+            label="UF"
+            value={uf}
+            onChange={(e) => {
+              setUF(e.target.value)
+              addressChanged()
+            }}
+            required={addressRequired}
+            error={errors.state}
+          >
             <option value="" />
             {states.map((s) => (
               <option key={s} value={s}>
@@ -248,16 +297,27 @@ export function DeliveryForm({ initial, legacyAddress, drivers, errors, sending,
             {pin ? 'Buscar de novo' : 'Achar no mapa'}
           </Button>
           {pin && (
-            <button type="button" onClick={() => setPin(null)} className="min-h-11 px-2 font-medium text-brand-700">
+            <button type="button" onClick={() => placePin(null)} className="min-h-11 px-2 font-medium text-brand-700">
               Tirar o pino
             </button>
           )}
         </div>
-        {mapLookup.state === 'error' && <p className="text-sm text-danger-fg">{mapLookup.message}</p>}
-        {(errors.latitude || errors.longitude) && (
-          <p className="text-sm text-danger-fg">Ponto do mapa inválido. Marque de novo.</p>
+        {pinMoved && !pin && (
+          <p role="status" className="text-sm text-slate-700">
+            O endereço mudou, então o pino saiu do mapa. Ache de novo ou toque no mapa.
+          </p>
         )}
-        <PinMap value={pin} onChange={setPin} label="Mapa com o local da entrega" />
+        {mapLookup.state === 'error' && (
+          <p role="alert" className="text-sm text-danger-fg">
+            {mapLookup.message}
+          </p>
+        )}
+        {(errors.latitude || errors.longitude) && (
+          <p role="alert" className="text-sm text-danger-fg">
+            Ponto do mapa inválido. Marque de novo.
+          </p>
+        )}
+        <PinMap value={pin} onChange={placePin} label="Mapa com o local da entrega" />
       </fieldset>
 
       <SelectField

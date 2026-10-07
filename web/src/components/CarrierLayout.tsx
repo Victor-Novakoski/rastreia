@@ -4,6 +4,8 @@ import { useAuth } from '../lib/auth'
 import { useMe } from '../lib/me'
 import type { PanelChange } from '../lib/deliveries'
 import { useLive } from '../lib/useLive'
+import { logoutFailed, useLogout } from '../lib/useLogout'
+import { Alert } from './Alert'
 import { LiveBadge } from './LiveBadge'
 import { Logo } from './Logo'
 
@@ -11,10 +13,7 @@ const link = ({ isActive }: { isActive: boolean }) =>
   `rounded-md px-3 py-2 font-medium focus-visible:outline-2 focus-visible:outline-white ${isActive ? 'bg-brand-700' : 'hover:bg-brand-700/60'}`
 
 export function CarrierLayout() {
-  const { logout } = useAuth()
-  const queryClient = useQueryClient()
-  // Dados de uma sessão não ficam no cache para a próxima.
-  const exit = () => void logout().finally(() => queryClient.clear())
+  const { exit, busy, failed } = useLogout()
   const live = usePanelLive()
   const me = useMe()
   return (
@@ -38,12 +37,22 @@ export function CarrierLayout() {
             Motoristas
           </NavLink>
           <span className="ml-auto">{live && <LiveBadge tone="dark" />}</span>
-          <button type="button" onClick={exit} className="rounded-md px-3 py-2 font-medium hover:bg-brand-700/60">
+          <button
+            type="button"
+            onClick={exit}
+            disabled={busy}
+            className="rounded-md px-3 py-2 font-medium hover:bg-brand-700/60 disabled:opacity-60"
+          >
             Sair
           </button>
         </nav>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+        {failed && (
+          <div className="mb-4">
+            <Alert>{logoutFailed}</Alert>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

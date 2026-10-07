@@ -45,7 +45,14 @@ export function connectLive(path: string, opts: LiveOptions): () => void {
   const open = async () => {
     let token: string | null = null
     if (opts.token) {
-      token = await opts.token(renew).catch(() => null)
+      try {
+        token = await opts.token(renew)
+      } catch {
+        // A renovação falhou (sem rede, 429, erro na API), mas a sessão pode
+        // continuar valendo: tenta de novo mais tarde, ainda pedindo token novo.
+        schedule()
+        return
+      }
       if (stopped) return
       // Sem sessão não há o que fazer; a tela de login assume.
       if (!token) return

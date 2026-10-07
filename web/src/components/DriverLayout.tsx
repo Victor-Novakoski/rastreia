@@ -1,13 +1,11 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Link, NavLink, Outlet } from 'react-router'
-import { useAuth } from '../lib/auth'
 import { useMe } from '../lib/me'
+import { logoutFailed, useLogout } from '../lib/useLogout'
+import { Alert } from './Alert'
 
 /** Moldura do app do motorista: uma coluna, pensada para o celular. */
 export function DriverLayout() {
-  const { logout } = useAuth()
-  const queryClient = useQueryClient()
-  const exit = () => void logout().finally(() => queryClient.clear())
+  const { exit, busy, failed } = useLogout()
   const me = useMe()
   return (
     <div className="flex min-h-dvh flex-col">
@@ -17,7 +15,12 @@ export function DriverLayout() {
             <span className="text-lg font-bold">Minhas entregas</span>
             {me.data && <span className="text-sm text-brand-50/80">{me.data.carrier.name}</span>}
           </Link>
-          <button type="button" onClick={exit} className="min-h-11 rounded-md px-3 font-medium hover:bg-brand-700/60">
+          <button
+            type="button"
+            onClick={exit}
+            disabled={busy}
+            className="min-h-11 rounded-md px-3 font-medium hover:bg-brand-700/60 disabled:opacity-60"
+          >
             Sair
           </button>
         </div>
@@ -29,6 +32,11 @@ export function DriverLayout() {
         </nav>
       </header>
       <main className="mx-auto w-full max-w-xl flex-1 px-4 py-4">
+        {failed && (
+          <div className="mb-4">
+            <Alert>{logoutFailed}</Alert>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

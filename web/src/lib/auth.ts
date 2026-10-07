@@ -5,13 +5,14 @@ import type { Role, Session, SignUpInput } from './session'
 export type AuthState =
   | { status: 'loading' }
   | { status: 'anonymous' }
-  | { status: 'error' }
+  | { status: 'error'; error: unknown }
   | { status: 'authenticated'; session: Session }
 
 export type AuthContextValue = {
   state: AuthState
   login: (email: string, password: string) => Promise<Role>
   signUp: (input: SignUpInput) => Promise<Role>
+  /** Encerra a sessão na API; se ela não confirmar, a sessão continua e o erro sobe. */
   logout: () => Promise<void>
   retry: () => void
   /** Requisição autenticada. Um 401 renova o token uma vez e repete a chamada. */
