@@ -1,6 +1,9 @@
 package delivery
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // maxSearch caps the text of a search; codes, names and e-mails are shorter.
 const maxSearch = 100
@@ -26,8 +29,15 @@ func foldAccents(s string) string {
 }
 
 // searchPattern turns what the carrier typed into the search parameter of
-// ListDeliveries, or nil when there is nothing to look for.
+// ListDeliveries, or nil when there is nothing to look for. Control
+// characters count as spaces: PostgreSQL rejects a NUL in text.
 func searchPattern(q string) *string {
+	q = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, q)
 	q = strings.Join(strings.Fields(q), " ")
 	if q == "" {
 		return nil

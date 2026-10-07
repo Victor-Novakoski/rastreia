@@ -26,9 +26,14 @@ func (noUsers) GetUserByEmail(context.Context, string) (store.User, error) {
 }
 
 func newTestServer(opts Options) http.Handler {
+	return New(testDeps(opts))
+}
+
+// testDeps has no database behind it: enough for whatever answers before one.
+func testDeps(opts Options) Deps {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
 	authHandler := auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{})
-	return New(Deps{
+	return Deps{
 		Tokens:     tokens,
 		Auth:       authHandler,
 		Users:      user.NewHandler(user.NewService(nil), authHandler),
@@ -36,7 +41,7 @@ func newTestServer(opts Options) http.Handler {
 		Routes:     route.NewHandler(route.NewService(nil, nil)),
 		Ready:      func(*http.Request) error { return nil },
 		Options:    opts,
-	})
+	}
 }
 
 func get(h http.Handler, path string, headers map[string]string) *httptest.ResponseRecorder {
@@ -59,6 +64,20 @@ func TestSecurityHeaders(t *testing.T) {
 
 	rec = get(newTestServer(Options{Production: true}), "/health", nil)
 	assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"))
+}
+
+func TestUnknownRouteAndMethodAnswerJSON(t *testing.T) {
+	h := newTestServer(Options{})
+	rec := get(h, "/nope", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.JSONEq(t, `{"error":"not found"}`, rec.Body.String())
+
+	req := httptest.NewRequest(http.MethodDelete, "/deliveries/7", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.JSONEq(t, `{"error":"method not allowed"}`, rec.Body.String())
+	assert.Equal(t, []string{"GET", "PATCH"}, rec.Header().Values("Allow"))
 }
 
 func TestCORS(t *testing.T) {
@@ -118,6 +137,17 @@ func TestLoginRateLimit(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, login())
 	assert.Equal(t, http.StatusUnauthorized, login())
 	assert.Equal(t, http.StatusTooManyRequests, login())
+}
+
+func TestSessionRoutesRefuseForeignOrigin(t *testing.T) {
+	h := newTestServer(Options{CORSOrigins: []string{"https://app.rastreia.dev"}})
+	for _, path := range []string{"/auth/login", "/auth/signup"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://evil.example")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code, path)
+	}
 }
 
 func TestTrustedProxy_UsesRightmostForwardedFor(t *testing.T) {
