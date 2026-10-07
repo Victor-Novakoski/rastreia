@@ -53,6 +53,7 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 func rateLimit(rdb redis.UniversalClient, name string, requests int) func(http.Handler) http.Handler {
 	opts := []httprate.Option{
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			httpx.AddLogAttrs(r.Context(), slog.String("reason", "rate limit "+name))
 			httpx.Error(w, http.StatusTooManyRequests, "too many requests, try again later")
 		}),
 	}

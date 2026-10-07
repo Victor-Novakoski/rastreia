@@ -12,6 +12,8 @@ Contexto que não está óbvio no código: decisões, o motivo de cada uma e arm
 
 Formato: data — decisão. *Por quê.* (alternativas descartadas)
 
+- **2026-10-07 — Log de requisição próprio, em JSON pelo `slog`, no lugar do `middleware.Logger` do chi.** *Uma linha por requisição no mesmo formato dos outros logs, que dá para pesquisar; 401, 403 e 429 viram aviso com o motivo, e os middlewares de autenticação acrescentam quem fez pela `httpx.AddLogAttrs`. A rota entra no lugar do caminho para o log não guardar códigos de rastreio nem buscas.* (Logger do chi, que escreve texto e o caminho com a query; um log separado em cada middleware que nega)
+
 - **2026-10-07 — Busca do painel com `LIKE`, e os acentos tirados por `translate` no SQL e por um `Replacer` no Go.** *"joao" acha "João" sem instalar extensão no Postgres; a busca roda só sobre as entregas da transportadora, que o índice de `carrier_id` já separa, então não precisa de índice próprio.* (pg_trgm com índice GIN e unaccent, extensões a instalar no banco; busca no front, que só enxerga a página carregada)
 - **2026-10-07 — Busca ao apertar Enter, não a cada tecla.** *Uma chamada por busca; apagar o campo volta para a lista inteira na hora.* (busca com debounce, que dispara chamadas no meio da digitação)
 
