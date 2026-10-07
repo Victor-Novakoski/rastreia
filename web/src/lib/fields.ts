@@ -11,6 +11,7 @@ const messages: Record<string, string> = {
   'must have at least 10 characters': 'Mínimo de 10 caracteres.',
   'must have at most 72 bytes': 'Senha longa demais.',
   'is too common': 'Senha muito comum. Escolha outra.',
+  'must not contain the e-mail': 'A senha não pode conter o e-mail.',
   'is required when the delivery fails': 'Conte o motivo da falha.',
   'must be an existing driver': 'Escolha um motorista da lista.',
   'must be a valid CNPJ': 'CNPJ inválido. Confira os números.',
