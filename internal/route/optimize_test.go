@@ -52,6 +52,23 @@ func TestOrder_TwoOptRemovesCrossing(t *testing.T) {
 	}
 }
 
+func TestOrder_TwoOptFixesNearestNeighbor(t *testing.T) {
+	// Four stops along a street heading east and one north of the first.
+	// Nearest neighbor walks the street and then comes all the way back for
+	// that one; 2-opt goes there first.
+	start := &Point{0, 0}
+	points := []Point{{0.02, 0.02}, {0.02, 0.01}, {0.02, 0.03}, {0.02, 0}, {0.03, 0}}
+
+	nn := nearestNeighbor(points, start)
+	assert.Equal(t, []int{3, 1, 0, 2, 4}, nn, "the one north last")
+	got := order(points, start)
+	assert.Equal(t, []int{3, 4, 1, 0, 2}, got, "the one north first")
+	assert.Less(t, pathLength(points, start, got), pathLength(points, start, nn))
+	for _, p := range permutations(len(points)) {
+		assert.LessOrEqual(t, pathLength(points, start, got), pathLength(points, start, p)+1e-9, "no order is shorter: %v", p)
+	}
+}
+
 func TestOrder_Empty(t *testing.T) {
 	assert.Empty(t, order(nil, nil))
 	assert.Equal(t, []int{0}, order([]Point{{1, 1}}, &Point{0, 0}))

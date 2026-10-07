@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata" // the route's day is Brazil's, whatever the server's zone
@@ -108,6 +109,9 @@ var (
 // another driver, another carrier or already delivered is refused.
 func (s *Service) Add(ctx context.Context, driver auth.Claims, code string) (Route, error) {
 	code = parseCode(code)
+	if !delivery.IsTrackingCode(code) {
+		return Route{}, apperr.ErrNotFound
+	}
 	var (
 		out     Route
 		claimed *store.Delivery
@@ -123,17 +127,22 @@ func (s *Service) Add(ctx context.Context, driver auth.Claims, code string) (Rou
 		if d.AnonymizedAt != nil || d.Status == delivery.StatusDelivered {
 			return errDelivered
 		}
-		switch {
-		case d.DriverID == nil:
-			d, err = q.ClaimDelivery(ctx, store.ClaimDeliveryParams{ID: d.ID, DriverID: &driver.UserID})
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errOtherDriver // another driver took it first
-			}
-			if err != nil {
+		if d.DriverID == nil {
+			taken, err := q.ClaimDelivery(ctx, store.ClaimDeliveryParams{ID: d.ID, DriverID: &driver.UserID})
+			switch {
+			case err == nil:
+				d, claimed = taken, &taken
+			case errors.Is(err, pgx.ErrNoRows):
+				// Someone took it in the meantime: maybe this same driver,
+				// scanning twice at once.
+				if d, err = q.GetDeliveryByTrackingCode(ctx, code); err != nil {
+					return err
+				}
+			default:
 				return err
 			}
-			claimed = &d
-		case *d.DriverID != driver.UserID:
+		}
+		if d.DriverID == nil || *d.DriverID != driver.UserID {
 			return errOtherDriver
 		}
 
@@ -145,7 +154,8 @@ func (s *Service) Add(ctx context.Context, driver auth.Claims, code string) (Rou
 		if err != nil {
 			return err
 		}
-		if len(items) >= maxPackages {
+		inRoute := slices.ContainsFunc(items, func(it store.ListRouteItemsRow) bool { return it.Delivery.ID == d.ID })
+		if !inRoute && len(items) >= maxPackages {
 			return errRouteTooLarge
 		}
 		if _, err := q.AddRouteItem(ctx, store.AddRouteItemParams{RouteID: r.ID, DeliveryID: d.ID}); err != nil {
@@ -339,10 +349,20 @@ func stopAddress(d store.Delivery) string {
 
 // stopKey is the same for packages delivered at the same door: same CEP,
 // street and number, whatever the complement (apartments of a building are
-// one stop). Older deliveries only have the one-line address.
+// one stop). A number without digits ("S/N") says nothing about the door, as
+// two farms on the same road share it, so those only join on the same spot
+// of the map. Older deliveries only have the one-line address.
 func stopKey(d store.Delivery) string {
-	if d.PostalCode != "" {
-		return strings.ToLower(d.PostalCode + "|" + d.Street + "|" + d.Number)
+	if d.PostalCode == "" {
+		return strings.ToLower(strings.Join(strings.Fields(d.Address), " "))
 	}
-	return strings.ToLower(strings.Join(strings.Fields(d.Address), " "))
+	key := strings.ToLower(d.PostalCode + "|" + d.Street + "|" + d.Number)
+	switch {
+	case strings.ContainsAny(d.Number, "0123456789"):
+		return key
+	case d.Latitude != nil && d.Longitude != nil:
+		return key + fmt.Sprintf("|%.4f,%.4f", *d.Latitude, *d.Longitude) // about 10 m
+	default:
+		return key + "|" + strconv.FormatInt(d.ID, 10)
+	}
 }

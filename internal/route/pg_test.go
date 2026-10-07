@@ -2,9 +2,11 @@ package route_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +19,7 @@ import (
 )
 
 type fixture struct {
+	pool       *pgxpool.Pool
 	deliveries *delivery.Service
 	routes     *route.Service
 	announced  *announcer
@@ -42,6 +45,7 @@ func setup(t *testing.T) fixture {
 	deliveries := delivery.NewService(delivery.NewPGStore(pool))
 	a := &announcer{}
 	return fixture{
+		pool:       pool,
 		deliveries: deliveries,
 		routes:     route.NewService(route.NewPGStore(pool), a),
 		announced:  a,
@@ -162,8 +166,10 @@ func TestPG_ScanRefused(t *testing.T) {
 
 	_, err = f.routes.Add(ctx, f.rival, brunos.TrackingCode)
 	assert.ErrorIs(t, err, apperr.ErrNotFound, "another carrier's package does not exist")
-	_, err = f.routes.Add(ctx, f.ana, "RSNOPE")
-	assert.ErrorIs(t, err, apperr.ErrNotFound)
+	for _, code := range []string{"RSNOPE", "RSAAAAAAAAAA", "RS\x00"} {
+		_, err = f.routes.Add(ctx, f.ana, code)
+		assert.ErrorIs(t, err, apperr.ErrNotFound, "%q", code)
+	}
 
 	done := f.create(t, "20", 0, &f.ana)
 	for _, st := range []string{delivery.StatusPickedUp, delivery.StatusInTransit, delivery.StatusDelivered} {
@@ -202,4 +208,57 @@ func TestPG_PackageGivenToAnotherDriverLeavesRoute(t *testing.T) {
 	r, err = f.routes.Add(ctx, f.bruno, d.TrackingCode)
 	require.NoError(t, err)
 	assert.Equal(t, [][]int64{{d.ID}}, ids(r))
+}
+
+func TestPG_SameDriverScansTwiceAtOnce(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	d := f.create(t, "10", 0, nil)
+
+	// The first scan is still running: it took the package, not yet committed.
+	tx, err := f.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(ctx) }()
+	_, err = store.New(tx).ClaimDelivery(ctx, store.ClaimDeliveryParams{ID: d.ID, DriverID: &f.ana.UserID})
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.routes.Add(ctx, f.ana, d.TrackingCode)
+		done <- err
+	}()
+	require.Eventually(t, func() bool {
+		var waiting bool
+		err := f.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock')`).Scan(&waiting)
+		return err == nil && waiting
+	}, 5*time.Second, 10*time.Millisecond, "the second scan waits for the first")
+	require.NoError(t, tx.Commit(ctx))
+
+	require.NoError(t, <-done, "the package is hers either way")
+	r, err := f.routes.Today(ctx, f.ana)
+	require.NoError(t, err)
+	assert.Equal(t, [][]int64{{d.ID}}, ids(r))
+}
+
+func TestPG_FullRoute(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+
+	const limit = 300
+	var first delivery.Delivery
+	for i := range limit {
+		d := f.create(t, strconv.Itoa(i+1), float64(i)/1000, &f.ana)
+		if i == 0 {
+			first = d
+		}
+		_, err := f.routes.Add(ctx, f.ana, d.TrackingCode)
+		require.NoError(t, err, i)
+	}
+
+	r, err := f.routes.Add(ctx, f.ana, first.TrackingCode)
+	require.NoError(t, err, "scanning again a package of the route changes nothing, full or not")
+	assert.Equal(t, limit, r.TotalPackages)
+	_, err = f.routes.Add(ctx, f.ana, f.create(t, "999", 0.5, &f.ana).TrackingCode)
+	assert.ErrorIs(t, err, apperr.ErrConflict, "one package too many")
 }
