@@ -172,7 +172,7 @@ func TestTrack_HidesPersonalData(t *testing.T) {
 
 	body, err := json.Marshal(tr)
 	require.NoError(t, err)
-	for _, secret := range []string{"Souza", "maria@example.com", "Rua A", "vizinho", "driver", `"id"`} {
+	for _, secret := range []string{"Souza", "maria@example.com", "Praça da Sé", "Apto 2", "Portão azul", "11987654321", "vizinho", "driver", `"id"`} {
 		assert.NotContains(t, string(body), secret)
 	}
 }

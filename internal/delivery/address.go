@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Victor-Novakoski/rastreia/internal/apperr"
 )
@@ -59,7 +60,7 @@ func (r *recipient) normalize() {
 
 func (r *recipient) validateContact(v apperr.Validator) {
 	v.Check(r.Name != "", "recipient_name", "is required")
-	v.Check(len(r.Name) <= maxName, "recipient_name", "must have at most 120 characters")
+	v.Check(utf8.RuneCountInString(r.Name) <= maxName, "recipient_name", "must have at most 120 characters")
 	v.Check(len(r.Email) <= maxEmail && validEmail(r.Email), "recipient_email", "must be a valid e-mail")
 }
 
@@ -73,15 +74,15 @@ func (r *recipient) validateAddress(v apperr.Validator) {
 	v.Check(len(r.PostalCode) == 8, "postal_code", "must have 8 digits")
 	required := func(value, field string, maxLen int) {
 		v.Check(value != "", field, "is required")
-		v.Check(len(value) <= maxLen, field, fmt.Sprintf("must have at most %d characters", maxLen))
+		v.Check(utf8.RuneCountInString(value) <= maxLen, field, fmt.Sprintf("must have at most %d characters", maxLen))
 	}
 	required(r.Street, "street", maxStreet)
 	required(r.Number, "number", maxNumber)
 	required(r.District, "district", maxDistrict)
 	required(r.City, "city", maxCity)
 	v.Check(slices.Contains(states, r.State), "state", "must be a Brazilian state (UF)")
-	v.Check(len(r.Complement) <= maxComplement, "complement", "must have at most 100 characters")
-	v.Check(len(r.Reference) <= maxReference, "address_reference", "must have at most 300 characters")
+	v.Check(utf8.RuneCountInString(r.Complement) <= maxComplement, "complement", "must have at most 100 characters")
+	v.Check(utf8.RuneCountInString(r.Reference) <= maxReference, "address_reference", "must have at most 300 characters")
 	v.Check((r.Latitude == nil) == (r.Longitude == nil), "latitude", "must be sent together with longitude")
 	if r.Latitude != nil {
 		v.Check(validCoordinate(*r.Latitude, 90), "latitude", "must be between -90 and 90")

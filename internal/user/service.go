@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -102,7 +103,7 @@ func (s *Service) signUp(ctx context.Context, in SignUpInput, strict bool) (User
 	}
 	v := apperr.Validator{}
 	v.Check(in.CarrierName != "", "carrier_name", "is required")
-	v.Check(len(in.CarrierName) <= maxName, "carrier_name", "must have at most 120 characters")
+	v.Check(utf8.RuneCountInString(in.CarrierName) <= maxName, "carrier_name", "must have at most 120 characters")
 	v.Check(in.Document == nil || validCNPJ(*in.Document), "document", "must be a valid CNPJ")
 	in.CreateInput = s.validate(v, in.CreateInput, strict)
 	if err := v.Err(); err != nil {
@@ -186,6 +187,9 @@ func (s *Service) EnsureDemoCarrier(ctx context.Context, in CreateInput) error {
 	// The password comes from configuration, which already refuses the
 	// development default in production, so only the length rule applies.
 	_, err = s.signUp(ctx, SignUpInput{CarrierName: DemoCarrier, CreateInput: in}, false)
+	if errors.Is(err, apperr.ErrConflict) {
+		return nil // another instance, starting at the same time, created it
+	}
 	return err
 }
 
@@ -196,7 +200,7 @@ func (s *Service) validate(v apperr.Validator, in CreateInput, strict bool) Crea
 	in.Name = strings.TrimSpace(in.Name)
 	in.Email = normalizeEmail(in.Email)
 	v.Check(in.Name != "", "name", "is required")
-	v.Check(len(in.Name) <= maxName, "name", "must have at most 120 characters")
+	v.Check(utf8.RuneCountInString(in.Name) <= maxName, "name", "must have at most 120 characters")
 	v.Check(len(in.Email) <= maxEmail && validEmail(in.Email), "email", "must be a valid e-mail")
 	problem := auth.PasswordProblem(in.Password)
 	switch {

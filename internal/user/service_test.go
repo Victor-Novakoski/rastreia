@@ -187,6 +187,23 @@ func TestEnsureDemoCarrier_IsIdempotent(t *testing.T) {
 	assert.Equal(t, DemoCarrier, fs.carriers[0].Name)
 }
 
+// startingTogether does not see the account another instance has just created.
+type startingTogether struct{ *fakeStore }
+
+func (startingTogether) GetUserByEmail(context.Context, string) (store.User, error) {
+	return store.User{}, pgx.ErrNoRows
+}
+
+func TestEnsureDemoCarrier_TwoInstancesAtOnce(t *testing.T) {
+	fs := &fakeStore{}
+	in := CreateInput{Name: "Admin", Email: "admin@example.com", Password: "admin12345"}
+	require.NoError(t, NewService(fs).EnsureDemoCarrier(context.Background(), in))
+
+	err := NewService(startingTogether{fs}).EnsureDemoCarrier(context.Background(), in)
+	assert.NoError(t, err, "the other instance created it first")
+	assert.Len(t, fs.users, 1)
+}
+
 func TestCreateDriver_PasswordPolicy(t *testing.T) {
 	svc := NewService(&fakeStore{})
 	for _, pw := range []string{"curta123", "1234567890", "Senha12345", strings.Repeat("a", 73), "Ana.Paula-2026", "anapaula@example.com"} {

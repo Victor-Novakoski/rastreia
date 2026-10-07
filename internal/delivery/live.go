@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/Victor-Novakoski/rastreia/internal/apperr"
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
@@ -57,6 +58,9 @@ func (s *Service) announce(ctx context.Context, carrierID, id int64, code, statu
 		return
 	}
 	t, err := s.Track(ctx, code)
+	if errors.Is(err, apperr.ErrNotFound) {
+		return // the public link expired, so nobody can be following it
+	}
 	if err != nil {
 		slog.Error("realtime tracking", "delivery_id", id, "err", err)
 		return

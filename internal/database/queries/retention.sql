@@ -1,5 +1,6 @@
 -- AnonymizeDeliveries erases the recipient of deliveries finished before
--- the given time, the drivers' notes, which are free text and may name
+-- the given time, and of the ones never finished that were created before
+-- abandoned_before; also the drivers' notes, which are free text and may name
 -- people, and the browsers still following them (a failed delivery keeps
 -- them). Returns how many deliveries were anonymized.
 -- name: AnonymizeDeliveries :one
@@ -20,8 +21,8 @@ WITH d AS (
         anonymized_at   = now(),
         updated_at      = now()
     WHERE anonymized_at IS NULL
-      AND status IN ('delivered', 'failed')
-      AND completed_at < sqlc.arg('before')::timestamptz
+      AND ((status IN ('delivered', 'failed') AND completed_at < sqlc.arg('before')::timestamptz)
+           OR (status NOT IN ('delivered', 'failed') AND created_at < sqlc.arg('abandoned_before')::timestamptz))
     RETURNING id
 ), e AS (
     UPDATE delivery_events SET note = NULL

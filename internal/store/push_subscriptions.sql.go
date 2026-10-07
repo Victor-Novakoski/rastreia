@@ -10,11 +10,18 @@ import (
 )
 
 const countPushSubscriptions = `-- name: CountPushSubscriptions :one
-SELECT count(*) FROM push_subscriptions WHERE delivery_id = $1
+SELECT count(*) FROM push_subscriptions WHERE delivery_id = $1 AND endpoint <> $2
 `
 
-func (q *Queries) CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, countPushSubscriptions, deliveryID)
+type CountPushSubscriptionsParams struct {
+	DeliveryID int64
+	Endpoint   string
+}
+
+// CountPushSubscriptions counts the other browsers following the delivery,
+// so one subscribing again does not count itself.
+func (q *Queries) CountPushSubscriptions(ctx context.Context, arg CountPushSubscriptionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPushSubscriptions, arg.DeliveryID, arg.Endpoint)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

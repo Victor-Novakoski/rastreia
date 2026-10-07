@@ -356,7 +356,7 @@ UPDATE deliveries SET
     status       = $1,
     completed_at = $2,
     updated_at   = now()
-WHERE id = $3 AND status = $4
+WHERE id = $3 AND status = $4 AND anonymized_at IS NULL
 RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
@@ -368,7 +368,8 @@ type SetDeliveryStatusParams struct {
 }
 
 // SetDeliveryStatus only changes the row if the status is still the one the
-// caller saw, so two concurrent events cannot both apply.
+// caller saw, so two concurrent events cannot both apply, and if the
+// recipient's data was not erased in the meantime.
 func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, setDeliveryStatus,
 		arg.Status,
@@ -423,7 +424,7 @@ UPDATE deliveries SET
     longitude         = $14,
     driver_id         = coalesce($15, driver_id),
     updated_at        = now()
-WHERE id = $16
+WHERE id = $16 AND anonymized_at IS NULL
 RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
@@ -448,7 +449,8 @@ type UpdateDeliveryParams struct {
 
 // UpdateDelivery writes every recipient and address field: the service
 // merges the change into the current delivery first. The driver is only
-// changed when sent.
+// changed when sent. An anonymized delivery is left alone, or an edit racing
+// the retention job would write the erased data back.
 func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, updateDelivery,
 		arg.RecipientName,

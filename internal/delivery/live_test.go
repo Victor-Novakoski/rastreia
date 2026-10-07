@@ -1,11 +1,14 @@
 package delivery
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,4 +91,27 @@ func TestAnnounce_RenameReloadsPublicPage(t *testing.T) {
 	msgs := pub.take()
 	require.Len(t, msgs, 2)
 	assert.Contains(t, string(msgs[1].msg), `"recipient_first_name":"Maria"`)
+}
+
+func TestAnnounce_ExpiredLinkIsNotAnError(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	fs := newFakeStore()
+	pub := &fakePublisher{}
+	svc := NewService(fs).WithPublisher(pub)
+	d := newAssigned(t, svc)
+	stored := fs.deliveries[d.ID]
+	stored.Status, stored.CompletedAt = StatusDelivered, ptr(time.Now().Add(-40*24*time.Hour))
+	fs.deliveries[d.ID] = stored
+	pub.take()
+
+	_, err := svc.Update(context.Background(), owner, d.ID, UpdateInput{RecipientName: ptr("Maria Souza")})
+	require.NoError(t, err)
+	msgs := pub.take()
+	require.Len(t, msgs, 1, "only the panel: the public link no longer works")
+	assert.Equal(t, PanelTopic(1), msgs[0].topic)
+	assert.Empty(t, logs.String())
 }

@@ -14,10 +14,11 @@ type Querier interface {
 	// changes nothing and affects no rows.
 	AddRouteItem(ctx context.Context, arg AddRouteItemParams) (int64, error)
 	// AnonymizeDeliveries erases the recipient of deliveries finished before
-	// the given time, the drivers' notes, which are free text and may name
+	// the given time, and of the ones never finished that were created before
+	// abandoned_before; also the drivers' notes, which are free text and may name
 	// people, and the browsers still following them (a failed delivery keeps
 	// them). Returns how many deliveries were anonymized.
-	AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error)
+	AnonymizeDeliveries(ctx context.Context, arg AnonymizeDeliveriesParams) (int64, error)
 	// ClaimDelivery assigns a delivery with no driver to the driver who scanned
 	// it; one that already has a driver is left alone.
 	ClaimDelivery(ctx context.Context, arg ClaimDeliveryParams) (Delivery, error)
@@ -27,7 +28,9 @@ type Querier interface {
 	// CountDeliveriesByStatus feeds the carrier's dashboard. since limits the
 	// count to deliveries created from that moment on.
 	CountDeliveriesByStatus(ctx context.Context, arg CountDeliveriesByStatusParams) ([]CountDeliveriesByStatusRow, error)
-	CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error)
+	// CountPushSubscriptions counts the other browsers following the delivery,
+	// so one subscribing again does not count itself.
+	CountPushSubscriptions(ctx context.Context, arg CountPushSubscriptionsParams) (int64, error)
 	CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error)
 	CreateCarrier(ctx context.Context, arg CreateCarrierParams) (Carrier, error)
 	// CreateCarrierWithOwner signs a carrier up with the person who runs it, in
@@ -79,7 +82,8 @@ type Querier interface {
 	ReserveIdempotencyKey(ctx context.Context, arg ReserveIdempotencyKeyParams) (IdempotencyKey, error)
 	RevokeRefreshFamily(ctx context.Context, familyID string) error
 	// SetDeliveryStatus only changes the row if the status is still the one the
-	// caller saw, so two concurrent events cannot both apply.
+	// caller saw, so two concurrent events cannot both apply, and if the
+	// recipient's data was not erased in the meantime.
 	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
 	// SetRoutePositions numbers the route's deliveries in the order of the ids
@@ -90,7 +94,8 @@ type Querier interface {
 	SkipStaleEvents(ctx context.Context, before time.Time) (int64, error)
 	// UpdateDelivery writes every recipient and address field: the service
 	// merges the change into the current delivery first. The driver is only
-	// changed when sent.
+	// changed when sent. An anonymized delivery is left alone, or an edit racing
+	// the retention job would write the erased data back.
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
 	UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error
 	// Marks the token used only if nobody did it first, so two refreshes racing

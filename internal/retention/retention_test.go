@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -51,9 +52,13 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	recent := create()
 	move(recent, delivery.StatusPickedUp, delivery.StatusInTransit, delivery.StatusDelivered)
 	open := create()
+	abandoned := create()
+	move(abandoned, delivery.StatusPickedUp)
 	_, err = pool.Exec(ctx, "UPDATE deliveries SET completed_at = now() - interval '100 days' WHERE id = $1", old.ID)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, "UPDATE deliveries SET created_at = now() - interval '200 days' WHERE id = $1", open.ID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, "UPDATE deliveries SET created_at = now() - interval '400 days' WHERE id = $1", abandoned.ID)
 	require.NoError(t, err)
 	follow := func(d delivery.Delivery) {
 		err := q.UpsertPushSubscription(ctx, store.UpsertPushSubscriptionParams{
@@ -67,17 +72,21 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	job := retention.NewJob(q, 90*24*time.Hour)
 	n, err := job.Once(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), n)
+	assert.Equal(t, int64(2), n, "the old finished one and the one nobody finished in a year")
 
-	got, err := svc.Get(ctx, owner, old.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "Destinatário removido", got.RecipientName)
-	assert.Empty(t, got.RecipientEmail)
-	assert.Empty(t, got.Address)
-	assert.Empty(t, got.RecipientPhone)
-	assert.Empty(t, got.Street)
-	assert.Nil(t, got.Latitude)
-	assert.NotNil(t, got.AnonymizedAt)
+	for _, id := range []int64{old.ID, abandoned.ID} {
+		got, err := svc.Get(ctx, owner, id)
+		require.NoError(t, err)
+		assert.Equal(t, "Destinatário removido", got.RecipientName)
+		assert.Empty(t, got.RecipientEmail)
+		assert.Empty(t, got.Address)
+		assert.Empty(t, got.RecipientPhone)
+		assert.Empty(t, got.Street)
+		assert.Nil(t, got.Latitude)
+		assert.NotNil(t, got.AnonymizedAt)
+	}
+	_, err = svc.Track(ctx, abandoned.TrackingCode)
+	assert.ErrorIs(t, err, apperr.ErrNotFound, "the public link of an anonymized delivery is gone")
 	events, err := svc.ListEvents(ctx, owner, old.ID)
 	require.NoError(t, err)
 	assert.Len(t, events, 4, "history stays")
@@ -91,7 +100,7 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 		assert.Equal(t, "Maria Souza", d.RecipientName)
 	}
 	for d, want := range map[int64]int64{old.ID: 0, open.ID: 1} {
-		n, err := q.CountPushSubscriptions(ctx, d)
+		n, err := q.CountPushSubscriptions(ctx, store.CountPushSubscriptionsParams{DeliveryID: d})
 		require.NoError(t, err)
 		assert.Equal(t, want, n, "only the anonymized delivery loses its browsers")
 	}
@@ -102,6 +111,11 @@ func TestPG_AnonymizesOldFinishedDeliveries(t *testing.T) {
 	name := "Outra Pessoa"
 	_, err = svc.Update(ctx, owner, old.ID, delivery.UpdateInput{RecipientName: &name})
 	assert.ErrorIs(t, err, apperr.ErrConflict)
+	// Not even an edit or event that read the delivery just before the job ran.
+	_, err = q.UpdateDelivery(ctx, store.UpdateDeliveryParams{ID: old.ID, RecipientName: "Maria Souza", RecipientEmail: "maria@example.com"})
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
+	_, err = q.SetDeliveryStatus(ctx, store.SetDeliveryStatusParams{ID: old.ID, FromStatus: delivery.StatusFailed, Status: delivery.StatusInTransit})
+	assert.ErrorIs(t, err, pgx.ErrNoRows)
 
 	n, err = job.Once(ctx)
 	require.NoError(t, err)

@@ -28,8 +28,8 @@ WITH d AS (
         anonymized_at   = now(),
         updated_at      = now()
     WHERE anonymized_at IS NULL
-      AND status IN ('delivered', 'failed')
-      AND completed_at < $1::timestamptz
+      AND ((status IN ('delivered', 'failed') AND completed_at < $1::timestamptz)
+           OR (status NOT IN ('delivered', 'failed') AND created_at < $2::timestamptz))
     RETURNING id
 ), e AS (
     UPDATE delivery_events SET note = NULL
@@ -41,12 +41,18 @@ WITH d AS (
 SELECT count(*) FROM d
 `
 
+type AnonymizeDeliveriesParams struct {
+	Before          time.Time
+	AbandonedBefore time.Time
+}
+
 // AnonymizeDeliveries erases the recipient of deliveries finished before
-// the given time, the drivers' notes, which are free text and may name
+// the given time, and of the ones never finished that were created before
+// abandoned_before; also the drivers' notes, which are free text and may name
 // people, and the browsers still following them (a failed delivery keeps
 // them). Returns how many deliveries were anonymized.
-func (q *Queries) AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, anonymizeDeliveries, before)
+func (q *Queries) AnonymizeDeliveries(ctx context.Context, arg AnonymizeDeliveriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, anonymizeDeliveries, arg.Before, arg.AbandonedBefore)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
