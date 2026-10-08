@@ -6,19 +6,19 @@ Convenções de design da API e das interfaces. O objetivo é que tudo pareça f
 
 ### Recursos e rotas
 - REST com JSON. Recursos no plural: `/deliveries`, `/drivers`.
-- Rotas do motorista ficam sob `/me/...` (ex.: `/me/deliveries`), sempre filtradas pelo usuário do token.
+- Rotas só do motorista ficam sob `/me/...` (ex.: `/me/deliveries`, `/me/route`), sempre filtradas pelo usuário do token. Rotas por id (`/deliveries/{id}` e os eventos) servem a transportadora e o motorista e conferem o dono.
 - Rotas públicas ficam sob `/public/...` (ex.: `/public/tracking/{code}`) e nunca recebem id interno, só o código de rastreio.
 - Mudança de status é um recurso próprio: `POST /deliveries/{id}/events`. Não existe `PATCH` de status.
 
 ### Formato
 - Campos em `snake_case`.
-- Datas em RFC 3339, em UTC (`2026-10-01T20:00:00Z`).
+- Datas em RFC 3339 (`2026-10-01T20:00:00Z`), no fuso do servidor, que é UTC no Docker e em produção.
 - Ids numéricos (`int64`) só nas rotas autenticadas. O código de rastreio é o identificador público.
-- Campos opcionais ausentes vêm como `null`, não somem do JSON.
+- Nenhum campo some do JSON. Sem valor, ids, números, datas, o CNPJ e a observação do evento vêm como `null`; as partes opcionais do endereço (`complement`, `address_reference`) vêm como string vazia.
 - Corpo JSON com limite de 1 MB e campos desconhecidos rejeitados.
 
 ### Erros
-Sempre o mesmo formato:
+Sempre o mesmo formato, inclusive para rota que não existe e método errado:
 
 ```json
 { "error": "mensagem curta" }
@@ -32,27 +32,32 @@ Validação (422) traz os campos:
 
 | Status | Quando |
 | --- | --- |
-| 400 | JSON inválido, id malformado |
+| 400 | JSON inválido, corpo vazio, campo desconhecido, id malformado |
 | 401 | Sem token, token inválido ou login errado |
-| 403 | Autenticado, mas sem permissão |
-| 404 | Não existe (ou não pertence a quem pede, para não revelar que existe) |
-| 409 | Conflito (ex.: e-mail já usado, transição de status inválida) |
+| 403 | Autenticado, mas sem permissão; ou `Origin` fora da lista nas rotas de sessão |
+| 404 | Não existe (ou não pertence a quem pede, para não revelar que existe); rota inexistente |
+| 405 | Método que a rota não aceita (com o cabeçalho `Allow`) |
+| 409 | Conflito (ex.: e-mail já usado, transição de status inválida, entrega já anonimizada) |
 | 422 | Dados inválidos, com `fields` |
-| 429 | Limite de requisições excedido |
+| 429 | Limite de requisições excedido, com `Retry-After` |
+| 499 | O cliente desistiu antes da resposta (só aparece no log) |
 | 500 | Erro inesperado, mensagem genérica |
+| 503 | Dependência fora do ar: banco ou Redis no `/health`, Redis no login |
+| 504 | A requisição passou de 15 s |
 
 ### Paginação
-- `?page=1&size=20`. `size` máximo 100; valores inválidos caem no padrão.
-- Ordenação padrão: mais recentes primeiro.
+- `?page=1&size=20`. `size` acima de 100 ou inválido volta para 20; `page` inválida vira 1, e acima de 10000 responde 422.
+- Filtros somam: `status`, `driver` (`none` ou o id do motorista) e `q` (busca). Valor inválido responde 422.
+- Ordenação padrão: mais recentes primeiro. Em `/me/deliveries`, as que faltam fazer vêm antes das entregues.
 
-## Interfaces (etapa 3)
+## Interfaces
 
-Três superfícies, uma identidade visual:
+Quatro superfícies, uma identidade visual:
 
 | Superfície | Dispositivo principal | Prioridade |
 | --- | --- | --- |
 | Página inicial | Desktop e celular | Entender o produto em 5 segundos e achar a própria porta: transportadora, motorista ou rastreio |
-| Painel da transportadora | Desktop | Densidade de informação: visão geral, tabela com filtros, busca e status visível |
+| Painel da transportadora | Desktop | Densidade de informação: visão geral, tabela com busca, filtros por status e por motorista e status visível |
 | App do motorista | Celular, uma mão, na rua | Botões grandes, poucos toques, funciona com sinal ruim |
 | Rastreio público | Celular, link vindo de e-mail | Carregar rápido; status e linha do tempo entendidos em 3 segundos |
 
@@ -104,6 +109,15 @@ Fonte do sistema (`system-ui`): nada para baixar, o que ajuda o rastreio públic
 - `TextField`, `TextArea`, `SelectField`: rótulo, controle com 44 px de altura e erro embaixo, ligado por `aria-describedby`.
 - `Alert`: erro (`role="alert"`) ou sucesso (`role="status"`) no topo do formulário.
 - `Loading`, `LoadError`, `Empty`: os estados de carregando, erro (com "Tentar de novo") e vazio.
-- `DriverLayout`: cabeçalho fixo com o nome da transportadora e uma coluna para o celular. No app do motorista, os botões de status têm 56 px de altura e dizem a ação ("Saí para entrega", "Entreguei"); "Não consegui entregar" é contornado em vermelho e abre o campo do motivo.
+- `DriverLayout`: cabeçalho fixo com o nome da transportadora, as abas "Rota de hoje" e "Entregas" e uma coluna para o celular. No app do motorista, os botões de status têm 56 px de altura e dizem a ação ("Saí para entrega", "Entreguei"); "Não consegui entregar" é contornado em vermelho e abre o campo do motivo.
+- `DeliveryForm`: entrega com CEP (o ViaCEP preenche rua, bairro, cidade e UF), telefone com máscara e pino no mapa. Mudar o endereço tira o pino antigo.
+- `PinMap` e `StopsMap` (`Map.tsx`, carregados sob demanda por `LazyMap.tsx`): pino arrastável do endereço, que também dá para pôr pelo teclado, e as paradas numeradas da rota. Se o mapa não baixa, um aviso fica no lugar dele e o resto da tela continua.
+- `QrScanner`: leitor do QR-code da etiqueta (`BarcodeDetector`, com jsQR de reserva). Sem câmera ou sem o leitor, o motorista digita o código.
+- `EventForm`: troca de status no painel, só com as transições que a API aceita.
+- `PushToggle`: liga e desliga o aviso no celular na página de rastreio, e explica quando o navegador bloqueou ou quando o iPhone precisa do site na tela de início.
+- `LiveBadge`: selo "Ao vivo" enquanto o WebSocket está aberto.
+- `RequireRole`: só mostra a área a quem tem o papel. Sem sessão, leva ao login daquela área; com o outro papel, leva à área certa.
+- `ErrorBoundary` e `Crashed`: erro inesperado mostra uma tela com "Recarregar", nunca uma tela branca.
+- Etiqueta (`LabelPage`): 10 x 15 cm, pronta para imprimir, com o QR-code do link de rastreio. "Imprimir" só aparece quando o QR-code e o nome da transportadora estão prontos.
 
 Ícones são SVG próprios em `StatusIcon`, sem biblioteca.

@@ -16,8 +16,8 @@ Regras que valem para qualquer mudança. Se uma regra atrapalhar, ela é discuti
 - Mudança de schema = nova migration (`up` e `down`). Migration que já está na `main` não é editada.
 - Services devolvem tipos do domínio, nunca a struct do `store` direto para o handler (evita vazar campos como `password_hash`).
 - Erros: `apperr.Validator` para validação, `apperr.ErrNotFound`/`ErrConflict` para os casos conhecidos. Erro inesperado sobe com `fmt.Errorf("contexto: %w", err)` e vira 500 genérico.
-- Comentários e identificadores em inglês, como o código atual. Docs, README e mensagens de commit em português.
-- `gofmt` e `go vet` limpos (`make lint`).
+- No Go, comentários e identificadores em inglês. No front, identificadores em inglês e comentários em português, como o código atual. Docs, README, textos da interface e mensagens de commit em português.
+- `make lint` sem avisos (golangci-lint na mesma versão e configuração da CI: gofmt, goimports, go vet, staticcheck, gosec, revive e outros). No front, `npm run lint` e `npm run typecheck`.
 
 ## 3. Segurança
 
@@ -34,7 +34,7 @@ Checklist para toda mudança (detalhes em [SECURITY.md](SECURITY.md)):
 
 - Regra de negócio nova tem teste no service. Rota nova tem teste do handler (status e corpo).
 - Bug corrigido ganha teste que falhava antes da correção.
-- `make test` passando antes de qualquer commit.
+- `make test` e, se mexeu no front, `npm test` em `web/` passando antes de qualquer commit.
 
 ## 5. API
 
@@ -56,7 +56,7 @@ Checklist para toda mudança (detalhes em [SECURITY.md](SECURITY.md)):
 ## 7. Documentação
 
 - Mudou comportamento, rota, variável de ambiente ou decisão de arquitetura: atualizar o doc correspondente no mesmo commit.
-- Decisão relevante (escolha de lib, trade-off, algo que foi descartado) vai para [MEMORY.md](MEMORY.md).
+- Decisão relevante (escolha de lib, trade-off, algo que foi descartado) vai para [DECISIONS.md](DECISIONS.md).
 - Tarefa concluída é marcada em [TASKS.md](TASKS.md).
 
 ## Definição de pronto

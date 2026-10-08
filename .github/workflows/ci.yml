@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Unitários e integração (Postgres via testcontainers)
+      - name: Unitários e integração (Postgres, Redis e RabbitMQ via testcontainers)
         run: go test -race -count=1 -coverprofile=coverage.out ./...
       - name: Cobertura
         run: |
