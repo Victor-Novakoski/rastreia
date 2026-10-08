@@ -8,12 +8,12 @@ Transportadoras pequenas e médias acompanham entregas por planilha e WhatsApp. 
 
 ## Solução
 
-Uma plataforma de rastreio de entregas com três pontas:
+Uma plataforma de rastreio de entregas com quatro partes:
 
-0. **Página inicial**: explica o produto e leva cada pessoa à sua área ("Sou transportadora", "Sou motorista", "Rastrear encomenda").
-1. **Painel da transportadora**: a transportadora se cadastra sozinha, cadastra motoristas e entregas, atribui entregas e acompanha tudo. Cada transportadora só vê os próprios dados.
-2. **App do motorista** (web mobile): vê as próprias entregas e atualiza o status na rua, com poucos toques.
-3. **Link público de rastreio** (cliente final): abre pelo código de rastreio, sem login, e vê o status em tempo real.
+1. **Página inicial**: explica o produto e leva cada pessoa à sua área ("Sou transportadora", "Sou motorista", "Quero rastrear").
+2. **Painel da transportadora**: a transportadora se cadastra sozinha, cadastra motoristas e entregas, imprime as etiquetas, atribui entregas e acompanha tudo. Cada transportadora só vê os próprios dados.
+3. **App do motorista** (web mobile): monta a rota do dia bipando os pacotes, vê as próprias entregas e atualiza o status na rua, com poucos toques.
+4. **Link público de rastreio** (cliente final): abre pelo código de rastreio, sem login, e vê o status em tempo real.
 
 ## Personas
 
@@ -41,25 +41,28 @@ O status só muda por **eventos** registrados pelo motorista (ou pela transporta
 
 ## Requisitos funcionais
 
-### Etapa 1 — Base da API (feito)
+Todos os requisitos abaixo, de RF01 a RF23, estão implementados.
+
+### Etapa 1 — Base da API
 - **RF01** Login com e-mail e senha para transportadora e motorista, devolvendo um token.
 - **RF02** Transportadora cadastra e lista motoristas.
-- **RF03** Transportadora cria, lista (com filtro por status e paginação), consulta e edita entregas.
+- **RF03** Transportadora cria, lista (com filtros por status e por motorista e paginação), consulta e edita entregas.
 - **RF04** Toda entrega recebe um código de rastreio aleatório e legível (ex.: `RS7K2M9QXA4P`).
 
 ### Etapa 2 — Eventos e rastreio público
-- **RF05** Motorista lista apenas as entregas atribuídas a ele.
+- **RF05** Motorista lista e abre apenas as entregas atribuídas a ele.
 - **RF06** Motorista (ou transportadora) registra um evento de status seguindo as transições válidas do ciclo acima.
-- **RF07** Consulta pública por código de rastreio, sem login, mostrando status e histórico, **sem dados pessoais** do destinatário (e-mail e endereço completo ficam de fora).
+- **RF07** Consulta pública por código de rastreio, sem login, mostrando status e histórico, **sem dados pessoais** do destinatário (e-mail, telefone e endereço ficam de fora).
 
 ### Etapa 3 — Front-end
 - **RF08** Painel web da transportadora.
 - **RF09** App web mobile do motorista.
 - **RF10** Página pública de rastreio.
 
-### Etapas seguintes
+### Tempo real e notificações
 - **RF11** Atualização em tempo real da página de rastreio e do painel (WebSocket).
 - **RF12** Notificação por e-mail ao destinatário quando o status muda (fila).
+- **RF23** Aviso no celular (Web Push, PWA) para quem acompanha o rastreio, sem criar conta.
 
 ### Produto (várias transportadoras)
 - **RF13** Várias transportadoras na mesma instalação. Cada uma é um *tenant*: motoristas, entregas e números ficam isolados, e o que é de outra transportadora responde como inexistente.
@@ -75,12 +78,12 @@ O status só muda por **eventos** registrados pelo motorista (ou pela transporta
 - **RF21** Pacotes no mesmo endereço viram uma parada. O sistema sugere uma ordem curta a partir de onde o motorista está e numera os pacotes de 1 a N; o motorista pode mudar a ordem como quiser.
 
 ### Busca no painel
-- **RF22** A transportadora busca entregas por parte do código de rastreio ou do nome ou e-mail do destinatário, sem diferenciar maiúsculas de minúsculas nem acentos ("joao" acha "João"). A busca soma com o filtro de status.
+- **RF22** A transportadora busca entregas por parte do código de rastreio ou do nome ou e-mail do destinatário, sem diferenciar maiúsculas de minúsculas nem acentos ("joao" acha "João"). A busca soma com os filtros de status e de motorista.
 
 ## Requisitos não funcionais
 
 - **RNF01 Segurança:** seguir [SECURITY.md](SECURITY.md). Nenhuma etapa é concluída com item crítico pendente.
-- **RNF02 Privacidade (LGPD):** o link público nunca expõe e-mail, endereço completo ou dados do motorista além do primeiro nome.
+- **RNF02 Privacidade (LGPD):** o link público nunca expõe e-mail, telefone, endereço nem dados do motorista; do destinatário mostra só o primeiro nome.
 - **RNF03 Desempenho:** respostas da API abaixo de 200 ms no p95 para as rotas de leitura, em ambiente local.
 - **RNF04 Mobile:** o app do motorista precisa funcionar bem em tela de 360 px e conexão lenta.
 - **RNF05 Qualidade:** testes automatizados para regras de negócio e handlers; CI bloqueia merge com teste, lint ou vulnerabilidade conhecida.
