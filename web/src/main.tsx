@@ -3,7 +3,6 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import { App } from './App'
-import { AuthProvider } from './components/AuthProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Crashed } from './components/States'
 import './index.css'
@@ -17,9 +16,7 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary fallback={<Crashed />}>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
+          <App />
         </QueryClientProvider>
       </BrowserRouter>
     </ErrorBoundary>

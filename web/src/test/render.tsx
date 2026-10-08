@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { App } from '../App'
-import { AuthProvider } from '../components/AuthProvider'
 
 type Handler = (req: { method: string; path: string; body: unknown; headers: Headers }) => [number, unknown?]
 
@@ -41,10 +40,8 @@ export function renderApp(path: string, extra?: ReactNode, queries?: DefaultOpti
   return render(
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={client}>
-        <AuthProvider>
-          <App />
-          {extra}
-        </AuthProvider>
+        <App />
+        {extra}
       </QueryClientProvider>
     </MemoryRouter>,
   )

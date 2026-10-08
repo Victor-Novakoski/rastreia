@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
+import { mockApi, renderApp } from '../test/render'
 import { FakeWebSocket } from '../test/websocket'
 import { TrackingPage } from './TrackingPage'
 
@@ -12,6 +13,18 @@ function renderAt(path: string) {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+/**
+ * O WebSocket abre num efeito, depois que a tela já mostrou a entrega: com a
+ * máquina ocupada, o teste chega antes dele. Espera a conexão existir.
+ */
+function liveSocket() {
+  return vi.waitFor(() => {
+    const ws = FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')
+    if (!ws) throw new Error('o WebSocket ainda não abriu')
+    return ws
+  })
 }
 
 function mockFetch(status: number, body: unknown) {
@@ -74,7 +87,7 @@ describe('TrackingPage', () => {
     renderAt('/rastreio/RS7K2M9QXA4P')
     expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
 
-    const ws = FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!
+    const ws = await liveSocket()
     act(() => ws.open())
     expect(screen.getByRole('status')).toHaveTextContent('Ao vivo')
 
@@ -103,10 +116,11 @@ describe('TrackingPage', () => {
     const fetch = mockFetch(200, tracking)
     renderAt('/rastreio/RS7K2M9QXA4P')
     expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
-    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.open())
+    const ws = await liveSocket()
+    act(() => ws.open())
 
     // Caiu; enquanto isso a entrega foi feita e o aviso se perdeu.
-    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.drop())
+    act(() => ws.drop())
     fetch.mockResolvedValue(
       Response.json({
         ...tracking,
@@ -119,6 +133,24 @@ describe('TrackingPage', () => {
     act(() => FakeWebSocket.instances[1].open())
     await vi.waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Entregue'))
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('não pergunta à API pela sessão: quem rastreia não tem conta', async () => {
+    const calls = mockApi({
+      'GET /public/tracking/RS7K2M9QXA4P': () => [
+        200,
+        {
+          tracking_code: 'RS7K2M9QXA4P',
+          status: 'pending',
+          recipient_first_name: 'Maria',
+          updated_at: '2026-10-01T10:00:00Z',
+          events: [{ status: 'pending', created_at: '2026-10-01T10:00:00Z' }],
+        },
+      ],
+    })
+    renderApp('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
+    expect(calls.map((c) => c.path)).toEqual(['/public/tracking/RS7K2M9QXA4P'])
   })
 
   it('código inexistente não abre WebSocket', async () => {
