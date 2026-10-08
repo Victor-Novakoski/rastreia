@@ -14,6 +14,18 @@ function renderAt(path: string) {
   )
 }
 
+/**
+ * O WebSocket abre num efeito, depois que a tela já mostrou a entrega: com a
+ * máquina ocupada, o teste chega antes dele. Espera a conexão existir.
+ */
+function liveSocket() {
+  return vi.waitFor(() => {
+    const ws = FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')
+    if (!ws) throw new Error('o WebSocket ainda não abriu')
+    return ws
+  })
+}
+
 function mockFetch(status: number, body: unknown) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
@@ -74,7 +86,7 @@ describe('TrackingPage', () => {
     renderAt('/rastreio/RS7K2M9QXA4P')
     expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
 
-    const ws = FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!
+    const ws = await liveSocket()
     act(() => ws.open())
     expect(screen.getByRole('status')).toHaveTextContent('Ao vivo')
 
@@ -103,10 +115,11 @@ describe('TrackingPage', () => {
     const fetch = mockFetch(200, tracking)
     renderAt('/rastreio/RS7K2M9QXA4P')
     expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
-    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.open())
+    const ws = await liveSocket()
+    act(() => ws.open())
 
     // Caiu; enquanto isso a entrega foi feita e o aviso se perdeu.
-    act(() => FakeWebSocket.last('/public/tracking/RS7K2M9QXA4P/live')!.drop())
+    act(() => ws.drop())
     fetch.mockResolvedValue(
       Response.json({
         ...tracking,
