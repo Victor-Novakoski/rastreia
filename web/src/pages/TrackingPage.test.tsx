@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
+import { mockApi, renderApp } from '../test/render'
 import { FakeWebSocket } from '../test/websocket'
 import { TrackingPage } from './TrackingPage'
 
@@ -132,6 +133,24 @@ describe('TrackingPage', () => {
     act(() => FakeWebSocket.instances[1].open())
     await vi.waitFor(() => expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Entregue'))
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('não pergunta à API pela sessão: quem rastreia não tem conta', async () => {
+    const calls = mockApi({
+      'GET /public/tracking/RS7K2M9QXA4P': () => [
+        200,
+        {
+          tracking_code: 'RS7K2M9QXA4P',
+          status: 'pending',
+          recipient_first_name: 'Maria',
+          updated_at: '2026-10-01T10:00:00Z',
+          events: [{ status: 'pending', created_at: '2026-10-01T10:00:00Z' }],
+        },
+      ],
+    })
+    renderApp('/rastreio/RS7K2M9QXA4P')
+    expect(await screen.findByRole('heading', { name: 'Olá, Maria' })).toBeInTheDocument()
+    expect(calls.map((c) => c.path)).toEqual(['/public/tracking/RS7K2M9QXA4P'])
   })
 
   it('código inexistente não abre WebSocket', async () => {
