@@ -6,20 +6,41 @@ package store
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Carrier struct {
+	ID        int64
+	Name      string
+	Document  *string
+	CreatedAt time.Time
+}
+
 type Delivery struct {
-	ID             int64
-	TrackingCode   string
-	RecipientName  string
-	RecipientEmail string
-	Address        string
-	Status         string
-	DriverID       *int64
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	CompletedAt    *time.Time
-	AnonymizedAt   *time.Time
+	ID               int64
+	TrackingCode     string
+	RecipientName    string
+	RecipientEmail   string
+	Address          string
+	Status           string
+	DriverID         *int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CompletedAt      *time.Time
+	AnonymizedAt     *time.Time
+	CarrierID        int64
+	RecipientPhone   string
+	PostalCode       string
+	Street           string
+	Number           string
+	Complement       string
+	District         string
+	City             string
+	State            string
+	AddressReference string
+	Latitude         *float64
+	Longitude        *float64
 }
 
 type DeliveryEvent struct {
@@ -60,6 +81,21 @@ type RefreshToken struct {
 	CreatedAt time.Time
 }
 
+type Route struct {
+	ID        int64
+	CarrierID int64
+	DriverID  int64
+	RouteDate pgtype.Date
+	CreatedAt time.Time
+}
+
+type RouteItem struct {
+	RouteID    int64
+	DeliveryID int64
+	Position   int32
+	AddedAt    time.Time
+}
+
 type User struct {
 	ID           int64
 	Name         string
@@ -67,4 +103,5 @@ type User struct {
 	PasswordHash string
 	Role         string
 	CreatedAt    time.Time
+	CarrierID    int64
 }

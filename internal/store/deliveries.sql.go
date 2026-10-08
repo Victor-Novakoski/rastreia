@@ -10,26 +10,104 @@ import (
 	"time"
 )
 
+const countDeliveriesByStatus = `-- name: CountDeliveriesByStatus :many
+SELECT status, count(*) AS total FROM deliveries
+WHERE carrier_id = $1
+  AND created_at >= $2::timestamptz
+GROUP BY status
+`
+
+type CountDeliveriesByStatusParams struct {
+	CarrierID int64
+	Since     time.Time
+}
+
+type CountDeliveriesByStatusRow struct {
+	Status string
+	Total  int64
+}
+
+// CountDeliveriesByStatus feeds the carrier's dashboard. since limits the
+// count to deliveries created from that moment on.
+func (q *Queries) CountDeliveriesByStatus(ctx context.Context, arg CountDeliveriesByStatusParams) ([]CountDeliveriesByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countDeliveriesByStatus, arg.CarrierID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountDeliveriesByStatusRow
+	for rows.Next() {
+		var i CountDeliveriesByStatusRow
+		if err := rows.Scan(&i.Status, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countUnassignedDeliveries = `-- name: CountUnassignedDeliveries :one
+SELECT count(*) FROM deliveries
+WHERE carrier_id = $1 AND driver_id IS NULL AND status = 'pending'
+`
+
+func (q *Queries) CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnassignedDeliveries, carrierID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createDelivery = `-- name: CreateDelivery :one
-INSERT INTO deliveries (tracking_code, recipient_name, recipient_email, address, driver_id)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
+INSERT INTO deliveries (
+    carrier_id, tracking_code, recipient_name, recipient_email, recipient_phone,
+    address, postal_code, street, number, complement, district, city, state,
+    address_reference, latitude, longitude, driver_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type CreateDeliveryParams struct {
-	TrackingCode   string
-	RecipientName  string
-	RecipientEmail string
-	Address        string
-	DriverID       *int64
+	CarrierID        int64
+	TrackingCode     string
+	RecipientName    string
+	RecipientEmail   string
+	RecipientPhone   string
+	Address          string
+	PostalCode       string
+	Street           string
+	Number           string
+	Complement       string
+	District         string
+	City             string
+	State            string
+	AddressReference string
+	Latitude         *float64
+	Longitude        *float64
+	DriverID         *int64
 }
 
 func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, createDelivery,
+		arg.CarrierID,
 		arg.TrackingCode,
 		arg.RecipientName,
 		arg.RecipientEmail,
+		arg.RecipientPhone,
 		arg.Address,
+		arg.PostalCode,
+		arg.Street,
+		arg.Number,
+		arg.Complement,
+		arg.District,
+		arg.City,
+		arg.State,
+		arg.AddressReference,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DriverID,
 	)
 	var i Delivery
@@ -45,12 +123,24 @@ func (q *Queries) CreateDelivery(ctx context.Context, arg CreateDeliveryParams) 
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.AnonymizedAt,
+		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const getDelivery = `-- name: GetDelivery :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries WHERE id = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries WHERE id = $1
 `
 
 func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
@@ -68,12 +158,24 @@ func (q *Queries) GetDelivery(ctx context.Context, id int64) (Delivery, error) {
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.AnonymizedAt,
+		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const getDeliveryByTrackingCode = `-- name: GetDeliveryByTrackingCode :one
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries WHERE tracking_code = $1
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries WHERE tracking_code = $1
 `
 
 func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error) {
@@ -91,25 +193,66 @@ func (q *Queries) GetDeliveryByTrackingCode(ctx context.Context, trackingCode st
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.AnonymizedAt,
+		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const listDeliveries = `-- name: ListDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries
-WHERE $1::text IS NULL OR status = $1::text
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
+WHERE carrier_id = $1
+  AND ($2::text IS NULL OR status = $2::text)
+  AND (NOT $3::boolean OR driver_id IS NULL)
+  AND ($4::bigint IS NULL OR driver_id = $4::bigint)
+  AND ($5::text IS NULL
+       OR lower(tracking_code) LIKE '%' || $5::text || '%'
+       OR lower(translate(recipient_name,
+                'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+                'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn'))
+          LIKE '%' || $5::text || '%'
+       OR lower(recipient_email) LIKE '%' || $5::text || '%')
 ORDER BY created_at DESC, id DESC
-LIMIT $3 OFFSET $2
+LIMIT $7 OFFSET $6
 `
 
 type ListDeliveriesParams struct {
-	Status *string
-	Offset int32
-	Limit  int32
+	CarrierID  int64
+	Status     *string
+	Unassigned bool
+	DriverID   *int64
+	Search     *string
+	Offset     int32
+	Limit      int32
 }
 
+// ListDeliveries lists the carrier's deliveries, newest first. search, when
+// given, matches part of the tracking code or of the recipient's name or
+// e-mail. The service sends it in lower case, without accents and with the
+// LIKE wildcards escaped; translate drops the same accents from the name
+// (the letters of foldAccents in internal/delivery), so "joao" finds "João".
+// unassigned keeps only deliveries without a driver; driver_id, only those
+// of one driver.
 func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error) {
-	rows, err := q.db.Query(ctx, listDeliveries, arg.Status, arg.Offset, arg.Limit)
+	rows, err := q.db.Query(ctx, listDeliveries,
+		arg.CarrierID,
+		arg.Status,
+		arg.Unassigned,
+		arg.DriverID,
+		arg.Search,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +272,18 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 			&i.UpdatedAt,
 			&i.CompletedAt,
 			&i.AnonymizedAt,
+			&i.CarrierID,
+			&i.RecipientPhone,
+			&i.PostalCode,
+			&i.Street,
+			&i.Number,
+			&i.Complement,
+			&i.District,
+			&i.City,
+			&i.State,
+			&i.AddressReference,
+			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}
@@ -141,10 +296,11 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 }
 
 const listDriverDeliveries = `-- name: ListDriverDeliveries :many
-SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at FROM deliveries
+SELECT id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude FROM deliveries
 WHERE driver_id = $1::bigint
+  AND anonymized_at IS NULL
   AND ($2::text IS NULL OR status = $2::text)
-ORDER BY created_at DESC, id DESC
+ORDER BY status = 'delivered', created_at DESC, id DESC
 LIMIT $4 OFFSET $3
 `
 
@@ -155,6 +311,9 @@ type ListDriverDeliveriesParams struct {
 	Limit    int32
 }
 
+// ListDriverDeliveries lists what is still to do before what was delivered,
+// so an old open delivery stays on the first page of a busy driver.
+// Deliveries whose data was erased leave the list: nothing is left to do.
 func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error) {
 	rows, err := q.db.Query(ctx, listDriverDeliveries,
 		arg.DriverID,
@@ -181,6 +340,18 @@ func (q *Queries) ListDriverDeliveries(ctx context.Context, arg ListDriverDelive
 			&i.UpdatedAt,
 			&i.CompletedAt,
 			&i.AnonymizedAt,
+			&i.CarrierID,
+			&i.RecipientPhone,
+			&i.PostalCode,
+			&i.Street,
+			&i.Number,
+			&i.Complement,
+			&i.District,
+			&i.City,
+			&i.State,
+			&i.AddressReference,
+			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}
@@ -197,8 +368,8 @@ UPDATE deliveries SET
     status       = $1,
     completed_at = $2,
     updated_at   = now()
-WHERE id = $3 AND status = $4
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
+WHERE id = $3 AND status = $4 AND anonymized_at IS NULL
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type SetDeliveryStatusParams struct {
@@ -209,7 +380,8 @@ type SetDeliveryStatusParams struct {
 }
 
 // SetDeliveryStatus only changes the row if the status is still the one the
-// caller saw, so two concurrent events cannot both apply.
+// caller saw, so two concurrent events cannot both apply, and if the
+// recipient's data was not erased in the meantime.
 func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, setDeliveryStatus,
 		arg.Status,
@@ -230,34 +402,83 @@ func (q *Queries) SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusPa
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.AnonymizedAt,
+		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }
 
 const updateDelivery = `-- name: UpdateDelivery :one
 UPDATE deliveries SET
-    recipient_name  = coalesce($1, recipient_name),
-    recipient_email = coalesce($2, recipient_email),
-    address         = coalesce($3, address),
-    driver_id       = coalesce($4, driver_id),
-    updated_at      = now()
-WHERE id = $5
-RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at
+    recipient_name    = $1,
+    recipient_email   = $2,
+    recipient_phone   = $3,
+    address           = $4,
+    postal_code       = $5,
+    street            = $6,
+    number            = $7,
+    complement        = $8,
+    district          = $9,
+    city              = $10,
+    state             = $11,
+    address_reference = $12,
+    latitude          = $13,
+    longitude         = $14,
+    driver_id         = coalesce($15, driver_id),
+    updated_at        = now()
+WHERE id = $16 AND anonymized_at IS NULL
+RETURNING id, tracking_code, recipient_name, recipient_email, address, status, driver_id, created_at, updated_at, completed_at, anonymized_at, carrier_id, recipient_phone, postal_code, street, number, complement, district, city, state, address_reference, latitude, longitude
 `
 
 type UpdateDeliveryParams struct {
-	RecipientName  *string
-	RecipientEmail *string
-	Address        *string
-	DriverID       *int64
-	ID             int64
+	RecipientName    string
+	RecipientEmail   string
+	RecipientPhone   string
+	Address          string
+	PostalCode       string
+	Street           string
+	Number           string
+	Complement       string
+	District         string
+	City             string
+	State            string
+	AddressReference string
+	Latitude         *float64
+	Longitude        *float64
+	DriverID         *int64
+	ID               int64
 }
 
+// UpdateDelivery writes every recipient and address field: the service
+// merges the change into the current delivery first. The driver is only
+// changed when sent. An anonymized delivery is left alone, or an edit racing
+// the retention job would write the erased data back.
 func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error) {
 	row := q.db.QueryRow(ctx, updateDelivery,
 		arg.RecipientName,
 		arg.RecipientEmail,
+		arg.RecipientPhone,
 		arg.Address,
+		arg.PostalCode,
+		arg.Street,
+		arg.Number,
+		arg.Complement,
+		arg.District,
+		arg.City,
+		arg.State,
+		arg.AddressReference,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DriverID,
 		arg.ID,
 	)
@@ -274,6 +495,18 @@ func (q *Queries) UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) 
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.AnonymizedAt,
+		&i.CarrierID,
+		&i.RecipientPhone,
+		&i.PostalCode,
+		&i.Street,
+		&i.Number,
+		&i.Complement,
+		&i.District,
+		&i.City,
+		&i.State,
+		&i.AddressReference,
+		&i.Latitude,
+		&i.Longitude,
 	)
 	return i, err
 }

@@ -45,7 +45,7 @@ export function TrackingSearchPage() {
           className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 font-mono text-lg uppercase tracking-wider focus:border-brand-600 focus:outline-2 focus:outline-brand-600 aria-invalid:border-danger-fg"
         />
         {error && (
-          <p id="code-error" className="text-sm text-danger-fg">
+          <p id="code-error" role="alert" className="text-sm text-danger-fg">
             {error}
           </p>
         )}

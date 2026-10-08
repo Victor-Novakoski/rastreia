@@ -2,11 +2,13 @@ package push_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Victor-Novakoski/rastreia/internal/apperr"
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/push"
@@ -18,11 +20,14 @@ func TestPG_SubscribeListAndForget(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()
 	q := store.New(pool)
-	admin, err := q.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin})
+	carrierID := testdb.Carrier(t, pool)
+	u, err := q.CreateUser(ctx, store.CreateUserParams{CarrierID: carrierID, Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier})
 	require.NoError(t, err)
 	deliveries := delivery.NewService(delivery.NewPGStore(pool))
-	d, err := deliveries.Create(ctx, admin.ID, delivery.CreateInput{
-		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
+	owner := auth.Claims{UserID: u.ID, Role: auth.RoleCarrier, CarrierID: carrierID}
+	d, err := deliveries.Create(ctx, owner, delivery.CreateInput{
+		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", RecipientPhone: "11987654321",
+		PostalCode: "01001000", Street: "Praça da Sé", Number: "10", District: "Sé", City: "São Paulo", State: "SP",
 	})
 	require.NoError(t, err)
 	svc := push.NewService(deliveries, q)
@@ -40,6 +45,13 @@ func TestPG_SubscribeListAndForget(t *testing.T) {
 	list, err = q.ListPushSubscriptionsByCode(ctx, d.TrackingCode)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
+
+	for i := len(list); i < push.MaxPerDelivery; i++ {
+		require.NoError(t, svc.Subscribe(ctx, d.TrackingCode, sub(fmt.Sprintf("https://fcm.googleapis.com/fcm/send/%d", i))))
+	}
+	require.NoError(t, svc.Subscribe(ctx, d.TrackingCode, s), "a browser already in can always subscribe again")
+	err = svc.Subscribe(ctx, d.TrackingCode, sub("https://fcm.googleapis.com/fcm/send/one-too-many"))
+	assert.ErrorIs(t, err, apperr.ErrConflict)
 
 	require.NoError(t, q.DeletePushSubscriptionsByCode(ctx, d.TrackingCode))
 	list, err = q.ListPushSubscriptionsByCode(ctx, d.TrackingCode)

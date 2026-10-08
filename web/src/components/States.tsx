@@ -28,3 +28,20 @@ export function LoadError({ error, onRetry }: { error: unknown; onRetry?: () => 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{children}</p>
 }
+
+/** Último recurso: um erro que nenhuma tela tratou não deixa a página em branco. */
+export function Crashed() {
+  return (
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+      <h1 className="text-xl font-bold">Algo deu errado</h1>
+      <p className="text-slate-600">Recarregue a página para continuar.</p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white"
+      >
+        Recarregar
+      </button>
+    </main>
+  )
+}

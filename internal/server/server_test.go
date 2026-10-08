@@ -14,6 +14,7 @@ import (
 
 	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
@@ -25,15 +26,22 @@ func (noUsers) GetUserByEmail(context.Context, string) (store.User, error) {
 }
 
 func newTestServer(opts Options) http.Handler {
+	return New(testDeps(opts))
+}
+
+// testDeps has no database behind it: enough for whatever answers before one.
+func testDeps(opts Options) Deps {
 	tokens := auth.NewTokens("test-secret-with-at-least-32-characters", time.Hour)
-	return New(Deps{
+	authHandler := auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{})
+	return Deps{
 		Tokens:     tokens,
-		Auth:       auth.NewHandler(noUsers{}, tokens, auth.NewLoginGuard(), auth.NewSessions(nil, time.Hour), auth.CookieOptions{}),
-		Users:      user.NewHandler(user.NewService(nil)),
+		Auth:       authHandler,
+		Users:      user.NewHandler(user.NewService(nil), authHandler),
 		Deliveries: delivery.NewHandler(delivery.NewService(nil)),
+		Routes:     route.NewHandler(route.NewService(nil, nil)),
 		Ready:      func(*http.Request) error { return nil },
 		Options:    opts,
-	})
+	}
 }
 
 func get(h http.Handler, path string, headers map[string]string) *httptest.ResponseRecorder {
@@ -56,6 +64,20 @@ func TestSecurityHeaders(t *testing.T) {
 
 	rec = get(newTestServer(Options{Production: true}), "/health", nil)
 	assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"))
+}
+
+func TestUnknownRouteAndMethodAnswerJSON(t *testing.T) {
+	h := newTestServer(Options{})
+	rec := get(h, "/nope", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.JSONEq(t, `{"error":"not found"}`, rec.Body.String())
+
+	req := httptest.NewRequest(http.MethodDelete, "/deliveries/7", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+	assert.JSONEq(t, `{"error":"method not allowed"}`, rec.Body.String())
+	assert.Equal(t, []string{"GET", "PATCH"}, rec.Header().Values("Allow"))
 }
 
 func TestCORS(t *testing.T) {
@@ -94,6 +116,14 @@ func TestRateLimit_IgnoresForwardedForUnlessTrusted(t *testing.T) {
 		"behind a trusted proxy each client IP has its own limit")
 }
 
+func TestRateLimit_IPv6CountsTheWholeSlash64(t *testing.T) {
+	h := newTestServer(Options{RateLimit: 1, TrustProxy: true})
+	require.Equal(t, http.StatusOK, get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:2::1"}).Code)
+	rec := get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:2:ffff::9"})
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code, "another address of the same /64 is the same client")
+	assert.Equal(t, http.StatusOK, get(h, "/health", map[string]string{"X-Forwarded-For": "2001:db8:1:3::1"}).Code)
+}
+
 func TestLoginRateLimit(t *testing.T) {
 	h := newTestServer(Options{LoginRateLimit: 2})
 	login := func() int {
@@ -107,6 +137,17 @@ func TestLoginRateLimit(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, login())
 	assert.Equal(t, http.StatusUnauthorized, login())
 	assert.Equal(t, http.StatusTooManyRequests, login())
+}
+
+func TestSessionRoutesRefuseForeignOrigin(t *testing.T) {
+	h := newTestServer(Options{CORSOrigins: []string{"https://app.rastreia.dev"}})
+	for _, path := range []string{"/auth/login", "/auth/signup"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://evil.example")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code, path)
+	}
 }
 
 func TestTrustedProxy_UsesRightmostForwardedFor(t *testing.T) {

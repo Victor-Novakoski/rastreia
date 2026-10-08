@@ -2,7 +2,7 @@
 
 Como o Rastreia trata cada risco, o que já está feito e o que falta. As tarefas pendentes estão em [TASKS.md](TASKS.md) e o checklist rápido para cada mudança está em [RULES.md](RULES.md#3-segurança).
 
-Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
+Situação revisada em 08/10/2026, ao fim da etapa 6.7 (acabamento e revisão geral).
 
 **Legenda:** ✅ feito · 🟡 parcial · 🔴 pendente · ⚪ ainda não se aplica (regra definida para quando se aplicar)
 
@@ -10,28 +10,28 @@ Situação revisada em 02/10/2026, durante a etapa 3 (refresh token em cookie).
 
 | # | Risco | Situação | Prioridade | O que é |
 | --- | --- | --- | --- | --- |
-| 1 | Variáveis de ambiente expostas | 🟡 | Etapas 4 e 7 | Senhas, chaves e segredos vazando por arquivo commitado, imagem Docker ou valor padrão usado em produção. |
+| 1 | Variáveis de ambiente expostas | 🟡 | Etapa 7 | Senhas, chaves e segredos vazando por arquivo commitado, imagem Docker ou valor padrão usado em produção. |
 | 2 | Validação no front-end | ✅ | — | Conferir os dados no formulário para dar retorno rápido ao usuário. Ajuda na experiência, mas não protege nada: dá para burlar. |
 | 3 | Validação no back-end | ✅ | — | A API confere tipo, formato e tamanho de tudo que recebe. É a validação que realmente protege. |
 | 4 | SQL Injection | ✅ | — | Texto enviado pelo usuário vira parte do comando SQL e consegue ler ou apagar dados do banco. |
-| 5 | Autenticação fraca | 🟡 | Baixa | Senha fraca ou previsível, login que dá pistas, ou credencial padrão que nunca foi trocada. |
+| 5 | Autenticação fraca | ✅ | — | Senha fraca ou previsível, login que dá pistas, ou credencial padrão que nunca foi trocada. |
 | 6 | IDOR | ✅ | — | Trocar o id na URL (ex.: /deliveries/2 por /deliveries/3) e acessar dado de outra pessoa. |
 | 7 | Senhas no banco | ✅ | — | Guardar a senha como texto no banco: se o banco vazar, todas as senhas vazam junto. |
 | 8 | Força bruta | ✅ | — | Tentar milhares de senhas seguidas até acertar. |
 | 9 | Envio duplicado | ✅ | — | Clique duplo, rede lenta ou reenvio que cria o mesmo registro duas vezes. |
 | 10 | CSRF | ✅ | — | Outro site faz o navegador do usuário logado enviar uma ação para a API sem ele perceber. |
 | 11 | Upload sem validação | ⚪ | — | Arquivo malicioso disfarçado (ex.: script com extensão .jpg) ou grande demais para o servidor. |
-| 12 | Vazamento de informação | 🟡 | Média | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
-| 13 | Dependências vulneráveis | 🟡 | Média | Biblioteca de terceiros com falha de segurança conhecida. |
+| 12 | Vazamento de informação | 🟡 | Etapa 7 | Mensagem de erro, stack trace ou cabeçalho que conta detalhes internos para um atacante. |
+| 13 | Dependências vulneráveis | ✅ | — | Biblioteca de terceiros com falha de segurança conhecida. |
 | 14 | Tokens | ✅ | — | Token que vale por muito tempo, não pode ser revogado ou carrega dados demais. |
-| 15 | Rate limit | ✅ | Etapa 5 | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
+| 15 | Rate limit | ✅ | — | Limitar quantas requisições cada cliente faz por minuto, contra abuso e força bruta. |
 | 16 | Dados sensíveis expostos | 🟡 | Etapa 7 (HTTPS) | Resposta da API, log ou link público mostrando dado pessoal ou secreto além do necessário. |
 | 17 | SSRF | ✅ | — | Fazer o servidor chamar uma URL escolhida pelo atacante, como a rede interna ou os metadados da nuvem. |
 | 18 | Cookies inseguros | ✅ | — | Cookie que o JavaScript pode ler, que trafega sem HTTPS ou que é enviado por outros sites. |
 | 19 | CORS | ✅ | — | Regra do navegador que diz quais sites podem chamar a API. |
 | 20 | XSS | ✅ | — | Script injetado num dado (ex.: no nome) que roda no navegador de quem abre a página. |
 | 21 | Headers de segurança | ✅ | — | Cabeçalhos HTTP que mandam o navegador se proteger (ex.: não abrir a página dentro de iframe, só usar HTTPS). |
-| 22 | Timeouts e negação de serviço | 🟡 | Etapa 5 | Conexões lentas ou requisições enormes que prendem o servidor e derrubam a API. |
+| 22 | Timeouts e negação de serviço | 🟡 | Etapa 7 | Conexões lentas ou requisições enormes que prendem o servidor e derrubam a API. |
 | 23 | Falsificação de IP | ✅ | — | Cliente mente o IP pelo cabeçalho X-Forwarded-For para escapar do rate limit. |
 | 24 | Enumeração de e-mails | ✅ | — | Descobrir quais e-mails têm conta pela mensagem ou pelo tempo de resposta do login. |
 | 25 | Banco de dados exposto | 🟡 | Etapa 7 | Banco acessível pela rede ou pela internet, sem precisar passar pela API. |
@@ -49,7 +49,6 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 - Segredos só por variável de ambiente; `.env.example` com valores de desenvolvimento.
 - A API não sobe com `JWT_SECRET` com menos de 32 caracteres.
 - Com `APP_ENV=production`, a API **recusa subir** com o `JWT_SECRET` ou o `ADMIN_PASSWORD` de desenvolvimento, ou com origem de CORS sem `https` (`internal/config`, com testes).
-
 - gitleaks na CI varre todo o histórico do git a cada PR, procurando chave ou senha commitada por engano.
 
 **Falta**
@@ -57,39 +56,40 @@ Os itens 1 a 19 são a lista original; os itens 20 a 27 completam a cobertura.
 
 ## 2. Validação no front-end — ✅
 
-Feito no painel admin: campos com `required`, `type="email"` e `maxLength` iguais aos limites da API, e os `fields` do 422 traduzidos e mostrados embaixo de cada campo (`web/src/lib/fields.ts`). Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back. As mensagens de `fields` do 422 aparecem embaixo do campo.
+Feito no painel da transportadora e no app do motorista: campos com `required`, `type="email"` e `maxLength` iguais aos limites da API, e os `fields` do 422 traduzidos e mostrados embaixo de cada campo (`web/src/lib/fields.ts`). Regra: o front valida para dar **feedback rápido** ao usuário (campos obrigatórios, formato de e-mail, tamanho), mas nunca é a proteção. Toda regra do front existe também no back.
 
 ## 3. Validação no back-end — ✅
 
 - Validação centralizada no service com `apperr.Validator`, retornando 422 com todos os campos inválidos.
 - Normalização (trim, e-mail em minúsculas) antes de validar.
 - `httpx.Decode` limita o corpo a 1 MB e rejeita campos desconhecidos (impede *mass assignment*, ex.: mandar `"status"` ou `"role"` no corpo).
-- Tamanho máximo nos textos: nome 120, e-mail 254, endereço 300 caracteres.
+- Tamanho máximo nos textos, contado em caracteres (não em bytes): nome 120, e-mail 254, rua 200, número 20, complemento, bairro e cidade 100, ponto de referência 300, busca 100 e observação do evento 500. CEP com 8 dígitos, telefone com 10 ou 11 (com DDD) e UF da lista dos estados.
+- Texto com o caractere nulo (`\u0000`) responde 400: o PostgreSQL não guarda esse caractere, e a requisição viraria 500.
 - Senha com mais de 72 bytes (limite do bcrypt) volta 422 em vez de 500.
-- O banco reforça com `CHECK` (status e papel), `NOT NULL` e `UNIQUE`.
+- O banco reforça com `CHECK` (status, papel e latitude/longitude juntas), `NOT NULL` e `UNIQUE`.
 
 ## 4. SQL Injection — ✅
 
 Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com parâmetros (`$1`, `$2`). Não existe SQL montado com concatenação. Regra em [RULES.md](RULES.md): SQL só pelo sqlc. Filtros dinâmicos (ex.: status opcional) são resolvidos com `sqlc.narg`, não com string.
 
-## 5. Autenticação fraca — 🟡
+## 5. Autenticação fraca — ✅
 
 **Feito**
 - Senhas com bcrypt; mínimo de 10 caracteres, máximo de 72 bytes e recusa de senhas comuns (`1234567890`, `senha12345`…).
 - Mesma mensagem e mesmo tempo de resposta para e-mail inexistente e senha errada (item 24).
 - JWT com algoritmo fixo (HS256), validade obrigatória e papel validado ao ler o token.
 - O papel vem do banco no login, nunca do corpo da requisição.
-- Em produção a API não sobe com a senha padrão do admin.
-
-**Falta**
-- Recusar senha igual ou parecida com o e-mail.
+- Senha montada a partir do e-mail é recusada: a parte antes do `@`, sem diferenciar maiúsculas nem pontuação, não pode aparecer na senha (`joao.silva@...` não aceita `JoaoSilva2026`). Partes com menos de 4 letras ficam de fora, porque bateriam com senhas demais.
+- Em produção a API não sobe com a senha padrão da conta de demonstração.
 - Ver também tokens (14).
 
 ## 6. IDOR (acesso a recurso de outra pessoa pelo id) — ✅
 
-- Rotas de admin (`/drivers`, `/deliveries`, `/deliveries/{id}`) respondem 403 para motorista.
+- Cada transportadora é um tenant. O `carrier_id` vem do token, e toda leitura ou escrita confere a transportadora: listagens filtram na query SQL, buscas por id respondem **404** quando a entrega é de outra transportadora, e motorista de outra transportadora não pode ser atribuído (422). Testes: `TestCarrierIsolation` (service) e `TestIntegration_CarriersAreIsolated` (API com Postgres real).
+- Rotas só da transportadora (`/drivers`, a lista e a criação em `/deliveries`, o `PATCH /deliveries/{id}` e `/summary`) respondem 403 para motorista.
 - O motorista lista entregas por `/me/deliveries`, e o filtro `driver_id = <id do token>` fica **na query SQL** (`ListDriverDeliveries`): entrega de outro motorista nunca sai do banco.
-- `GET`/`POST /deliveries/{id}/events` conferem se a entrega pertence ao motorista; se não pertencer (ou não tiver motorista), respondem **404**, igual a uma entrega inexistente, para não confirmar que o id existe.
+- `GET /deliveries/{id}` e `GET`/`POST /deliveries/{id}/events` conferem se a entrega pertence ao motorista; se não pertencer (ou não tiver motorista), respondem **404**, igual a uma entrega inexistente, para não confirmar que o id existe.
+- Rota do motorista: o pacote bipado é buscado pelo código e conferido com a transportadora do token; de outra transportadora responde 404, como inexistente, e de outro motorista, 409. Remover e reordenar só mexem na rota do próprio motorista. Testes: `TestPG_ScanRefused` e `TestIntegration_Route`.
 - O rastreio público usa só o código aleatório (10 caracteres de um alfabeto de 32, cerca de 50 bits), nunca o id sequencial.
 - Testes: unitários (`TestEvents_DriverOnlySeesOwnDeliveries`) e de integração pela API com Postgres real (`TestIntegration_DriversOnlyReachTheirOwnDeliveries`): motorista B tentando ler, alterar e listar entrega do motorista A.
 
@@ -107,7 +107,7 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 - Cada falha é registrada no log com o IP e uma impressão do e-mail (não o e-mail em si).
 - Com `REDIS_URL`, o contador fica no Redis e vale para todas as instâncias, numa operação atômica (script Lua). As chaves levam um hash SHA-256 do e-mail, nunca o e-mail. Se o Redis não responde, o login devolve 503 em vez de seguir sem proteção.
 
-## 9. Bloquear durante envio (envio duplicado) — 🟡
+## 9. Bloquear durante envio (envio duplicado) — ✅
 
 **Back (feito)**
 - `POST /deliveries` aceita o cabeçalho `Idempotency-Key`: a mesma chave do mesmo usuário em até 24h devolve a entrega criada na primeira vez (com `Idempotent-Replayed: true`) em vez de criar outra. A mesma chave com outro corpo responde 422.
@@ -120,11 +120,13 @@ Todo SQL fica em `internal/database/queries/*.sql` e o sqlc gera código com par
 
 As rotas que alteram dados usam `Authorization: Bearer`, que o navegador não envia sozinho. Só `/auth/refresh` e `/auth/logout` dependem do cookie, e elas têm duas barreiras: o cookie é `SameSite=Strict` e restrito a `Path=/auth`, e a requisição precisa de um cabeçalho `Origin` da lista `CORS_ORIGINS` (sem `Origin`, 403).
 
+`/auth/login` e `/auth/signup` também recusam (403) um `Origin` fora da lista: outro site não consegue logar o navegador da vítima numa conta do atacante (*login CSRF*). Clientes que não são navegador, como o curl, não mandam `Origin` e passam.
+
 Se algum dia a sessão inteira for por cookie, token anti-CSRF obrigatório nas rotas que alteram dados.
 
 ## 11. Upload sem validação — ⚪
 
-Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em aberto no [PRD](PRD.md)):
+Não há upload hoje. Se o comprovante de entrega com foto entrar (hoje fora da v1, decisão no [PRD](PRD.md)):
 - Tamanho máximo (ex.: 5 MB) com `http.MaxBytesReader`.
 - Tipo verificado pelo conteúdo do arquivo (*magic bytes*), não pela extensão nem pelo `Content-Type` enviado; só JPEG, PNG e WebP.
 - Reprocessar a imagem no servidor para remover metadados (EXIF tem GPS).
@@ -135,12 +137,12 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Feito**
 - Erro inesperado vira `500 {"error":"internal error"}`; o detalhe só vai para o log.
-- Pânico é capturado pelo middleware `Recoverer`, sem stack trace na resposta.
-- Login não diz se o e-mail existe (pela mensagem).
+- Pânico é capturado por um middleware que responde 500 e loga a pilha, sem stack trace na resposta.
+- Rota que não existe e método errado respondem no mesmo JSON dos outros erros, sem o texto padrão do roteador.
+- Login não diz se o e-mail existe, nem pela mensagem nem pelo tempo de resposta (item 24).
+- Headers de segurança em todas as respostas (item 21).
 
 **Falta**
-- O tempo de resposta do login ainda revela se o e-mail existe (item 24).
-- Headers de segurança (item 21).
 - Decidir se `/openapi.yaml` continua público em produção (hoje é; não expõe segredo, mas mapeia a API).
 
 ## 13. Dependências vulneráveis — ✅
@@ -149,29 +151,30 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 - `govulncheck` rodado em 01/10/2026: **nenhuma vulnerabilidade alcançável pelo código**. Ele aponta o GO-2026-5932, no pacote `openpgp` de `golang.org/x/crypto`, que o projeto não usa (só usamos `bcrypt`).
 - Na etapa 2 o testcontainers trouxe o `moby/go-archive` v0.2.0 com o GO-2026-6253 (alcançável só pelo código de teste); atualizado para a v0.3.0, que corrige.
 - Imagem final distroless, sem shell nem gerenciador de pacotes, rodando como usuário não-root.
-
 - `govulncheck` roda na CI em todo PR.
-- Dependabot abre PR semanal para a `develop` com atualizações de módulos Go, imagens Docker e GitHub Actions.
+- `npm audit --omit=dev --audit-level=high` roda na CI do front.
+- Dependabot abre PR semanal para a `develop` com atualizações de módulos Go, pacotes npm do front, imagens Docker e GitHub Actions.
 - As GitHub Actions são fixadas pelo hash do commit, não pela tag, porque tags podem ser trocadas por quem invadir o repositório da action.
 - Trivy varre a imagem final na CI e falha o PR em vulnerabilidade HIGH ou CRITICAL que já tenha correção.
 
 ## 14. Tokens mal otimizados — ✅
 
 **Feito**
-- Access token JWT de 15 min (`JWT_TTL`), com algoritmo fixo, claims mínimos (`sub`, `role`, `iat`, `exp`) e `iss`/`aud` validados.
+- Access token JWT de 15 min (`JWT_TTL`), com algoritmo fixo (HS256), claims mínimos (`sub`, `role`, `cid`, `iat`, `exp`) e `iss`/`aud` validados.
 - Refresh token opaco (32 bytes aleatórios) no cookie `rastreia_refresh`, salvo no banco **só como hash** (SHA-256), válido por `REFRESH_TTL` (7 dias) sem uso.
 - Rotação: cada uso marca o token como usado e entrega o próximo da mesma família. Reuso de um token já trocado revoga a família inteira (sinal de roubo). Dois refreshes simultâneos com o mesmo token também contam como reuso.
 - `POST /auth/logout` revoga a sessão.
+- No front, o access token fica só em memória (item 20), e a renovação passa por uma trava entre abas (`navigator.locks`), para duas abas não usarem o mesmo refresh token e derrubarem a sessão.
 
-**Falta:** revogar as sessões ao trocar a senha ou desativar o usuário, quando essas funções existirem. No front, o access token fica só em memória (item 20).
+**Falta:** revogar as sessões ao trocar a senha ou desativar o usuário, quando essas funções existirem.
 
 ## 15. Rate limit — ✅
 
 **Feito**
-- Limite global de 120 requisições por minuto por IP e de 10 por minuto no login, com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
-- Limite próprio de 30 por minuto por IP no rastreio público (`/public/tracking/{code}`), para dificultar a varredura de códigos.
-- O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23).
-- A página de rastreio e o WebSocket dela dividem o mesmo limite.
+- Limite global de 120 requisições por minuto por IP e de 10 por minuto em cada rota de sessão (`/auth/login`, `/auth/signup`, `/auth/refresh` e `/auth/logout`, cada uma com o seu contador), com 429 e `Retry-After` (`internal/server/middleware.go`, com testes).
+- Limite próprio de 30 por minuto por IP no rastreio público, dividido entre a página (`/public/tracking/{code}`), o WebSocket dela e a inscrição de push, para dificultar a varredura de códigos.
+- O IP usado é o da conexão, a não ser que `TRUST_PROXY=true` (item 23). No IPv6 conta a rede `/64` inteira, porque cada aparelho costuma receber uma `/64` e trocar de endereço dentro dela.
+- A página de rastreio não chama `/auth/refresh`: quem só acompanha uma entrega não gasta as renovações do IP, que numa rede compartilhada são as mesmas de quem está logado.
 - Com `REDIS_URL`, os contadores ficam no Redis e valem para todas as instâncias; se o Redis cair, cada instância volta a contar em memória até ele voltar.
 - Em produção o Redis não deve ficar exposto na internet; no compose de desenvolvimento ele só escuta em `127.0.0.1`.
 
@@ -179,10 +182,11 @@ Não há upload hoje. Se o comprovante de entrega com foto entrar (pergunta em a
 
 **Feito**
 - Hash de senha nunca sai da API; `.env` fora do git; logs não registram corpo de requisição nem token.
-- O rastreio público tem resposta própria (`delivery.Tracking`): código, status, histórico (status e horário) e primeiro nome do destinatário. **Não** inclui e-mail, endereço, sobrenome, motorista, ids internos nem as observações dos eventos (texto livre do motorista pode ter dado pessoal). Testado no serviço e pela API.
+- O rastreio público tem resposta própria (`delivery.Tracking`): código, nome da transportadora, status, histórico (status e horário) e primeiro nome do destinatário. **Não** inclui e-mail, telefone, endereço, coordenadas, sobrenome, motorista, ids internos nem as observações dos eventos (texto livre do motorista pode ter dado pessoal). Testado no serviço e pela API.
+- Com `APP_ENV=production`, toda resposta leva `Strict-Transport-Security` (item 21).
 
 **Falta**
-- HTTPS obrigatório em produção (HSTS).
+- HTTPS no deploy (etapa 7).
 - Banco exposto (item 25).
 
 ## 17. SSRF — ✅
@@ -207,13 +211,14 @@ O único cookie é o `rastreia_refresh`: `HttpOnly`, `SameSite=Strict`, `Path=/a
 ## 19. CORS — ✅
 
 - Lista exata de origens vinda de `CORS_ORIGINS` (padrão: `http://localhost:5173`, o Vite), sem `*`. Em produção só aceita `https`.
-- Só os métodos (`GET`, `POST`, `PATCH`) e cabeçalhos (`Authorization`, `Content-Type`) usados.
+- Só os métodos (`GET`, `POST`, `PATCH`, `PUT`, `DELETE`) e cabeçalhos (`Authorization`, `Content-Type`, `Idempotency-Key`) usados.
 - `credentials` liberado, porque o refresh token vai no cookie (item 18). Por isso a lista de origens nunca pode ter `*`.
 
 ## 20. XSS — ✅
 
 - React escapa todo texto vindo da API. O oxlint barra `dangerouslySetInnerHTML` (`react/no-danger`), links `javascript:` e `target="_blank"` sem `rel="noopener noreferrer"`.
-- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL`. No `npm run dev` ela fica de fora, porque o hot reload do Vite usa script inline.
+- O build injeta uma Content-Security-Policy no `index.html` (`web/csp.ts`): scripts e estilos só do próprio site, nada inline, e conexões só com a origem de `VITE_API_URL` (HTTP e WebSocket) e com o ViaCEP e o Nominatim (endereço da entrega). Imagens externas só os mapas do OpenStreetMap. No `npm run dev` a CSP fica de fora, porque o hot reload do Vite usa script inline.
+- Para o ViaCEP e o Nominatim só vão CEP, rua, número, cidade e UF, nunca o nome, o telefone ou o e-mail do destinatário. O Nominatim é chamado no máximo uma vez por segundo, como pede a política de uso dele.
 - O access token fica em memória, não em `localStorage`; o refresh token está num cookie `HttpOnly`. Um XSS não leva a sessão embora.
 
 **Deploy (etapa 7):** `frame-ancestors` não funciona em `<meta>`, então a CDN do front precisa mandar `Content-Security-Policy: frame-ancestors 'none'` (ou `X-Frame-Options: DENY`) no cabeçalho.
@@ -226,7 +231,7 @@ Middleware em todas as respostas: `X-Content-Type-Options: nosniff`, `X-Frame-Op
 
 **Feito:** `ReadHeaderTimeout` de 5 s, `ReadTimeout` de 15 s, `WriteTimeout` de 30 s, `IdleTimeout` de 60 s, timeout de 15 s por requisição no roteador, corpo limitado a 1 MB, paginação com máximo de 100 itens e rate limit (item 15).
 
-No WebSocket: no máximo 20 conexões abertas por IP, mensagem do cliente limitada a 4 KB, 5 s para mandar o token, ping a cada 30 s e conexão fechada quando o token vence. O WebSocket público só abre para código válido e conta no rate limit do rastreio, e o `Origin` precisa estar na lista do CORS.
+No WebSocket: no máximo 20 conexões abertas por IP (ou por rede `/64` no IPv6) em cada instância da API, mensagem do cliente limitada a 4 KB, 5 s para mandar o token, ping a cada 30 s e conexão fechada quando o token vence. O WebSocket público só abre para código válido e conta no rate limit do rastreio, e, quando o navegador manda `Origin`, ele precisa estar na lista do CORS.
 
 **Falta:** limite de conexões no pool do banco ajustado para produção.
 
@@ -236,7 +241,7 @@ O `X-Forwarded-For` só é lido com `TRUST_PROXY=true`, que deve ser ligado apen
 
 ## 24. Enumeração de e-mails — ✅
 
-Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, então o tempo é o mesmo dos dois jeitos (medido: ~80 a 90 ms em ambos). A mensagem também é a mesma, e o bloqueio por falhas vale para qualquer e-mail. O cadastro de motorista (409 "e-mail já usado") só é acessível ao admin.
+Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, então o tempo é o mesmo dos dois jeitos (medido: ~80 a 90 ms em ambos). A mensagem também é a mesma, e o bloqueio por falhas vale para qualquer e-mail. O cadastro de motorista (409 `e-mail already in use`) só é acessível à transportadora. O cadastro aberto de transportadora também responde 409 para e-mail usado, o que revela que o e-mail tem conta; é o mesmo trade-off de qualquer cadastro aberto, e a rota tem o mesmo limite do login (10/min por IP), com contador próprio.
 
 ## 25. Banco de dados exposto — 🟡
 
@@ -250,25 +255,29 @@ Quando o e-mail não existe, o login compara a senha com um hash bcrypt fixo, en
 
 ## 26. Logs e auditoria — 🟡
 
-**Feito:** logs estruturados em JSON com request ID; erro interno logado com detalhe; falha de login logada com IP e impressão do e-mail.
+**Feito**
+- Todo log sai em JSON pelo `slog`, com uma linha por requisição (`internal/server/log.go`): método, rota, status, duração, IP, request ID e, nas rotas autenticadas, quem fez (`user_id` e `carrier_id`).
+- 401, 403 e 429 saem como aviso, com a mensagem `request denied` e o motivo (`missing token`, `invalid token`, `role driver not allowed`, `rate limit login`, `login locked`, `wrong e-mail or password`). Dá para filtrar por eles e criar alertas. Erros 5xx saem como erro, e pânico vem com a pilha.
+- Falha de login leva o IP e uma impressão do e-mail (SHA-256 cortado), nunca o e-mail.
+- O log grava a rota (`/public/tracking/{code}`), não o caminho, e nunca a query string: código de rastreio e a busca do painel (que pode ter o nome do destinatário) ficam de fora. Sem senha, token ou corpo de requisição no log. Testado em `internal/server`.
+- WebSocket do painel recusado (token inválido na primeira mensagem) também gera um aviso, `websocket denied`.
 
 **Falta**
-- Logar também 429, 403 e token inválido de forma pesquisável. Sem senha, token ou dado pessoal no log.
 - Auditoria de negócio da edição de entregas (`PATCH`). Mudanças de status já ficam em `delivery_events`, com quem fez e quando.
-- Alertas em produção para pico de falhas de login e de 5xx.
+- Alertas em produção para pico de falhas de login e de 5xx (etapa 7). Antes deles, separar o `/auth/refresh` sem cookie (visitante da página inicial, que é normal) do refresh com token inválido ou reusado: hoje os dois saem como o mesmo aviso.
 
 ## 27. LGPD e retenção de dados — ✅
 
-O sistema guarda nome, e-mail e endereço de destinatários.
+O sistema guarda nome, e-mail, telefone e endereço do destinatário, com o ponto de referência e as coordenadas no mapa.
 
 **Feito**
 - Rastreio público sem dados pessoais além do primeiro nome (item 16).
 - O link público deixa de funcionar 30 dias depois de a entrega ser entregue ou da última falha (responde 404, como um código inexistente).
 - E-mail e push de notificação levam só o primeiro nome, o código e o status, sem endereço nem observação do motorista. O nome passa pelo `html/template`, que escapa HTML.
 - As inscrições de push são apagadas quando a entrega é entregue ou quando o serviço de push diz que expiraram.
-
-- Retenção: `RETENTION_DAYS` (padrão 90, mínimo 31) dias depois de entregue ou da última falha, a API apaga nome, e-mail e endereço do destinatário e as observações dos eventos (texto livre que pode citar pessoas). A entrega e o histórico de status ficam para os relatórios, e a entrega anonimizada não aceita mais alteração (409), para os dados não voltarem. Roda a cada hora em `internal/retention`, testado com Postgres real.
-- Coleta só o necessário: sem CPF, telefone etc. enquanto não houver uso.
+- Retenção: `RETENTION_DAYS` (padrão 90, mínimo 31) dias depois de entregue ou da última falha, a API troca o nome por "Destinatário removido" e apaga e-mail, telefone, endereço (CEP, rua, número, complemento, bairro e ponto de referência), coordenadas, as observações dos eventos (texto livre que pode citar pessoas) e as inscrições de push. Entrega que ficou parada mais de 1 ano sem terminar recebe o mesmo tratamento. Ficam a cidade, a UF, a entrega e o histórico de status, para os relatórios; a entrega anonimizada não aceita mais alteração (409), para os dados não voltarem, e o link público dela responde 404. Roda a cada hora em `internal/retention`, testado com Postgres real.
+- A mesma tarefa apaga as chaves de idempotência com mais de 24 horas e os refresh tokens vencidos.
+- Coleta só o necessário: o telefone entra porque o motorista precisa falar com o destinatário na entrega; CPF e outros documentos do destinatário não são pedidos.
 
 **Falta**
 - Backups seguem a mesma regra quando existirem (etapa 7).

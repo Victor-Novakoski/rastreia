@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -35,6 +37,8 @@ type Store interface {
 	GetDelivery(ctx context.Context, id int64) (store.Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (store.Delivery, error)
 	ListDeliveries(ctx context.Context, arg store.ListDeliveriesParams) ([]store.Delivery, error)
+	CountDeliveriesByStatus(ctx context.Context, arg store.CountDeliveriesByStatusParams) ([]store.CountDeliveriesByStatusRow, error)
+	CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error)
 	ListDriverDeliveries(ctx context.Context, arg store.ListDriverDeliveriesParams) ([]store.Delivery, error)
 	UpdateDelivery(ctx context.Context, arg store.UpdateDeliveryParams) (store.Delivery, error)
 	SetDeliveryStatus(ctx context.Context, arg store.SetDeliveryStatusParams) (store.Delivery, error)
@@ -45,6 +49,7 @@ type Store interface {
 	GetIdempotencyKey(ctx context.Context, arg store.GetIdempotencyKeyParams) (store.IdempotencyKey, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg store.SetIdempotencyKeyDeliveryParams) error
 	GetUserByID(ctx context.Context, id int64) (store.User, error)
+	GetCarrier(ctx context.Context, id int64) (store.Carrier, error)
 	// InTx runs fn in a database transaction, passing a Store bound to it.
 	InTx(ctx context.Context, fn func(Store) error) error
 }
@@ -63,32 +68,138 @@ type Delivery struct {
 	// AnonymizedAt is set when the recipient's data was erased (see
 	// internal/retention); such a delivery can no longer change.
 	AnonymizedAt *time.Time `json:"anonymized_at"`
+	// CarrierID is the carrier that owns the delivery; callers only ever
+	// see their own carrier's deliveries, so it is not sent.
+	CarrierID int64 `json:"-"`
+	// RecipientPhone and the address parts are empty for deliveries
+	// created before the address was split; those only have Address.
+	RecipientPhone   string   `json:"recipient_phone"`
+	PostalCode       string   `json:"postal_code"`
+	Street           string   `json:"street"`
+	Number           string   `json:"number"`
+	Complement       string   `json:"complement"`
+	District         string   `json:"district"`
+	City             string   `json:"city"`
+	State            string   `json:"state"`
+	AddressReference string   `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
 }
 
 func fromStore(d store.Delivery) Delivery {
 	return Delivery(d)
 }
 
+// CreateInput is the recipient and the address in parts; the one-line
+// address is built from them. Latitude and longitude are optional (the
+// carrier's form places the address on a map) and go together.
 type CreateInput struct {
-	RecipientName  string `json:"recipient_name"`
-	RecipientEmail string `json:"recipient_email"`
-	Address        string `json:"address"`
-	DriverID       *int64 `json:"driver_id"`
+	RecipientName    string   `json:"recipient_name"`
+	RecipientEmail   string   `json:"recipient_email"`
+	RecipientPhone   string   `json:"recipient_phone"`
+	PostalCode       string   `json:"postal_code"`
+	Street           string   `json:"street"`
+	Number           string   `json:"number"`
+	Complement       string   `json:"complement"`
+	District         string   `json:"district"`
+	City             string   `json:"city"`
+	State            string   `json:"state"`
+	AddressReference string   `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
+	DriverID         *int64   `json:"driver_id"`
 }
 
-// UpdateInput only changes the fields that are sent. The status is not
-// editable here: it changes through delivery events.
+func (in CreateInput) recipient() recipient {
+	return recipient{
+		Name: in.RecipientName, Email: in.RecipientEmail, Phone: in.RecipientPhone,
+		PostalCode: in.PostalCode, Street: in.Street, Number: in.Number, Complement: in.Complement,
+		District: in.District, City: in.City, State: in.State, Reference: in.AddressReference,
+		Latitude: in.Latitude, Longitude: in.Longitude,
+	}
+}
+
+// UpdateInput only changes the fields that are sent. Changing any part of
+// the address checks the whole address again, and the map position is
+// dropped unless new coordinates come with it. The status is not editable
+// here: it changes through delivery events.
 type UpdateInput struct {
-	RecipientName  *string `json:"recipient_name"`
-	RecipientEmail *string `json:"recipient_email"`
-	Address        *string `json:"address"`
-	DriverID       *int64  `json:"driver_id"`
+	RecipientName    *string  `json:"recipient_name"`
+	RecipientEmail   *string  `json:"recipient_email"`
+	RecipientPhone   *string  `json:"recipient_phone"`
+	PostalCode       *string  `json:"postal_code"`
+	Street           *string  `json:"street"`
+	Number           *string  `json:"number"`
+	Complement       *string  `json:"complement"`
+	District         *string  `json:"district"`
+	City             *string  `json:"city"`
+	State            *string  `json:"state"`
+	AddressReference *string  `json:"address_reference"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
+	DriverID         *int64   `json:"driver_id"`
+}
+
+// apply merges the sent fields into r and tells whether the address changed.
+func (in UpdateInput) apply(r *recipient) (addressChanged bool) {
+	set := func(dst *string, src *string) bool {
+		if src != nil {
+			*dst = *src
+		}
+		return src != nil
+	}
+	set(&r.Name, in.RecipientName)
+	set(&r.Email, in.RecipientEmail)
+	set(&r.Phone, in.RecipientPhone)
+	for _, f := range []struct {
+		dst *string
+		src *string
+	}{
+		{&r.PostalCode, in.PostalCode}, {&r.Street, in.Street}, {&r.Number, in.Number},
+		{&r.Complement, in.Complement}, {&r.District, in.District}, {&r.City, in.City},
+		{&r.State, in.State}, {&r.Reference, in.AddressReference},
+	} {
+		addressChanged = set(f.dst, f.src) || addressChanged
+	}
+	if in.Latitude != nil || in.Longitude != nil {
+		r.Latitude, r.Longitude = in.Latitude, in.Longitude
+		addressChanged = true
+	} else if addressChanged {
+		r.Latitude, r.Longitude = nil, nil
+	}
+	return addressChanged
 }
 
 type ListInput struct {
 	Status *string
+	// Search looks for part of the tracking code or of the recipient's
+	// name or e-mail, ignoring case and accents. Only the carrier's list
+	// uses it.
+	Search string
+	// Driver is "none" for deliveries without a driver or a driver's id.
+	// Only the carrier's list uses it.
+	Driver string
 	Page   int
 	Size   int
+}
+
+// NoDriver is the Driver filter for deliveries nobody was assigned to.
+const NoDriver = "none"
+
+// driverFilter turns Driver into the query's filters; ok is false when it
+// is neither "none" nor an id.
+func (in ListInput) driverFilter() (unassigned bool, driverID *int64, ok bool) {
+	switch in.Driver {
+	case "":
+		return false, nil, true
+	case NoDriver:
+		return true, nil, true
+	}
+	id, err := strconv.ParseInt(in.Driver, 10, 64)
+	if err != nil || id <= 0 {
+		return false, nil, false
+	}
+	return false, &id, true
 }
 
 type Service struct {
@@ -102,36 +213,37 @@ func NewService(s Store) *Service {
 	return &Service{store: s, newCode: NewTrackingCode, now: time.Now}
 }
 
-// Create adds a delivery and its first "pending" event, recorded as made by actorID.
-func (s *Service) Create(ctx context.Context, actorID int64, in CreateInput) (Delivery, error) {
-	if err := s.validateCreate(ctx, &in); err != nil {
+// Create adds a delivery to the actor's carrier, with its first "pending"
+// event recorded as made by the actor.
+func (s *Service) Create(ctx context.Context, actor auth.Claims, in CreateInput) (Delivery, error) {
+	rec, err := s.validateCreate(ctx, actor.CarrierID, in)
+	if err != nil {
 		return Delivery{}, err
 	}
 	var out Delivery
-	err := s.retryOnCodeCollision(ctx, func(q Store) (err error) {
-		out, err = s.insert(ctx, q, actorID, in)
+	err = s.retryOnCodeCollision(ctx, func(q Store) (err error) {
+		out, err = s.insert(ctx, q, actor, rec, in.DriverID)
 		return err
 	})
 	if err == nil {
-		s.announce(ctx, out.ID, out.TrackingCode, out.Status, false)
+		s.announce(ctx, out.CarrierID, out.ID, out.TrackingCode, out.Status, false)
 	}
 	return out, err
 }
 
-func (s *Service) validateCreate(ctx context.Context, in *CreateInput) error {
-	in.RecipientName = strings.TrimSpace(in.RecipientName)
-	in.RecipientEmail = strings.ToLower(strings.TrimSpace(in.RecipientEmail))
-	in.Address = strings.TrimSpace(in.Address)
-
+func (s *Service) validateCreate(ctx context.Context, carrierID int64, in CreateInput) (recipient, error) {
+	rec := in.recipient()
+	rec.normalize()
 	v := apperr.Validator{}
-	v.Check(in.RecipientName != "", "recipient_name", "is required")
-	v.Check(validEmail(in.RecipientEmail), "recipient_email", "must be a valid e-mail")
-	v.Check(in.Address != "", "address", "is required")
-	checkLengths(v, &in.RecipientName, &in.RecipientEmail, &in.Address)
+	rec.validateContact(v)
+	rec.validatePhone(v)
+	rec.validateAddress(v)
 	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
+		if err := s.checkDriver(ctx, v, carrierID, *in.DriverID); err != nil {
+			return rec, err
+		}
 	}
-	return v.Err()
+	return rec, v.Err()
 }
 
 // retryOnCodeCollision runs fn in a transaction, starting over with a new
@@ -149,23 +261,35 @@ func (s *Service) retryOnCodeCollision(ctx context.Context, fn func(q Store) err
 	return errors.New("could not generate a unique tracking code")
 }
 
-func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateInput) (Delivery, error) {
+func (s *Service) insert(ctx context.Context, q Store, actor auth.Claims, r recipient, driverID *int64) (Delivery, error) {
 	code, err := s.newCode()
 	if err != nil {
 		return Delivery{}, err
 	}
 	d, err := q.CreateDelivery(ctx, store.CreateDeliveryParams{
-		TrackingCode:   code,
-		RecipientName:  in.RecipientName,
-		RecipientEmail: in.RecipientEmail,
-		Address:        in.Address,
-		DriverID:       in.DriverID,
+		CarrierID:        actor.CarrierID,
+		TrackingCode:     code,
+		RecipientName:    r.Name,
+		RecipientEmail:   r.Email,
+		RecipientPhone:   r.Phone,
+		Address:          r.fullAddress(),
+		PostalCode:       r.PostalCode,
+		Street:           r.Street,
+		Number:           r.Number,
+		Complement:       r.Complement,
+		District:         r.District,
+		City:             r.City,
+		State:            r.State,
+		AddressReference: r.Reference,
+		Latitude:         r.Latitude,
+		Longitude:        r.Longitude,
+		DriverID:         driverID,
 	})
 	if err != nil {
 		return Delivery{}, err
 	}
 	_, err = q.CreateDeliveryEvent(ctx, store.CreateDeliveryEventParams{
-		DeliveryID: d.ID, Status: d.Status, CreatedBy: &actorID,
+		DeliveryID: d.ID, Status: d.Status, CreatedBy: &actor.UserID,
 	})
 	if err != nil {
 		return Delivery{}, err
@@ -173,21 +297,25 @@ func (s *Service) insert(ctx context.Context, q Store, actorID int64, in CreateI
 	return fromStore(d), nil
 }
 
-func (s *Service) Get(ctx context.Context, id int64) (Delivery, error) {
-	d, err := s.store.GetDelivery(ctx, id)
+// Get returns a delivery of the actor's carrier; any other is not found.
+func (s *Service) Get(ctx context.Context, actor auth.Claims, id int64) (Delivery, error) {
+	d, err := s.visible(ctx, actor, id)
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	return fromStore(d), nil
 }
 
-func (s *Service) List(ctx context.Context, in ListInput) ([]Delivery, error) {
+// List lists the carrier's deliveries; the filters are part of the query.
+func (s *Service) List(ctx context.Context, carrierID int64, in ListInput) ([]Delivery, error) {
 	if err := in.validate(); err != nil {
 		return nil, err
 	}
 	limit, offset := in.page()
+	unassigned, driverID, _ := in.driverFilter()
 	rows, err := s.store.ListDeliveries(ctx, store.ListDeliveriesParams{
-		Status: in.Status, Limit: limit, Offset: offset,
+		CarrierID: carrierID, Status: in.Status, Search: searchPattern(in.Search),
+		Unassigned: unassigned, DriverID: driverID, Limit: limit, Offset: offset,
 	})
 	return fromStoreList(rows), err
 }
@@ -211,6 +339,9 @@ func (in ListInput) validate() error {
 		v.Check(validStatus(*in.Status), "status", "must be one of "+strings.Join(statuses, ", "))
 	}
 	v.Check(in.Page <= maxPage, "page", "must be at most 10000")
+	v.Check(utf8.RuneCountInString(in.Search) <= maxSearch, "q", "must have at most 100 characters")
+	_, _, ok := in.driverFilter()
+	v.Check(ok, "driver", `must be "none" or a driver id`)
 	return v.Err()
 }
 
@@ -238,72 +369,86 @@ func fromStoreList(rows []store.Delivery) []Delivery {
 	return out
 }
 
-func (s *Service) Update(ctx context.Context, id int64, in UpdateInput) (Delivery, error) {
-	v := apperr.Validator{}
-	if in.RecipientName != nil {
-		*in.RecipientName = strings.TrimSpace(*in.RecipientName)
-		v.Check(*in.RecipientName != "", "recipient_name", "cannot be empty")
-	}
-	if in.RecipientEmail != nil {
-		*in.RecipientEmail = strings.ToLower(strings.TrimSpace(*in.RecipientEmail))
-		v.Check(validEmail(*in.RecipientEmail), "recipient_email", "must be a valid e-mail")
-	}
-	if in.Address != nil {
-		*in.Address = strings.TrimSpace(*in.Address)
-		v.Check(*in.Address != "", "address", "cannot be empty")
-	}
-	checkLengths(v, in.RecipientName, in.RecipientEmail, in.Address)
-	if in.DriverID != nil {
-		v.Check(s.isDriver(ctx, *in.DriverID), "driver_id", "must be an existing driver")
-	}
-	if err := v.Err(); err != nil {
-		return Delivery{}, err
-	}
-	cur, err := s.store.GetDelivery(ctx, id)
+func (s *Service) Update(ctx context.Context, actor auth.Claims, id int64, in UpdateInput) (Delivery, error) {
+	cur, err := s.visible(ctx, actor, id)
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	if cur.AnonymizedAt != nil {
 		return Delivery{}, errAnonymized
 	}
+	rec := recipientOf(cur)
+	addressChanged := in.apply(&rec)
+	rec.normalize()
+
+	v := apperr.Validator{}
+	rec.validateContact(v)
+	if in.RecipientPhone != nil {
+		rec.validatePhone(v)
+	}
+	if addressChanged {
+		rec.validateAddress(v)
+	}
+	if in.DriverID != nil {
+		if err := s.checkDriver(ctx, v, actor.CarrierID, *in.DriverID); err != nil {
+			return Delivery{}, err
+		}
+	}
+	if err := v.Err(); err != nil {
+		return Delivery{}, err
+	}
+	address := cur.Address
+	if addressChanged {
+		address = rec.fullAddress()
+	}
 
 	d, err := s.store.UpdateDelivery(ctx, store.UpdateDeliveryParams{
-		ID:             id,
-		RecipientName:  in.RecipientName,
-		RecipientEmail: in.RecipientEmail,
-		Address:        in.Address,
-		DriverID:       in.DriverID,
+		ID:               id,
+		RecipientName:    rec.Name,
+		RecipientEmail:   rec.Email,
+		RecipientPhone:   rec.Phone,
+		Address:          address,
+		PostalCode:       rec.PostalCode,
+		Street:           rec.Street,
+		Number:           rec.Number,
+		Complement:       rec.Complement,
+		District:         rec.District,
+		City:             rec.City,
+		State:            rec.State,
+		AddressReference: rec.Reference,
+		Latitude:         rec.Latitude,
+		Longitude:        rec.Longitude,
+		DriverID:         in.DriverID,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Delivery{}, errAnonymized // the retention job got there after visible
+	}
 	if err != nil {
-		return Delivery{}, notFound(err)
+		return Delivery{}, err
 	}
 	// The public page shows the recipient's first name, so it reloads too.
-	s.announce(ctx, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
+	s.announce(ctx, d.CarrierID, d.ID, d.TrackingCode, d.Status, in.RecipientName != nil)
 	return fromStore(d), nil
 }
 
-const (
-	maxName    = 120
-	maxEmail   = 254
-	maxAddress = 300
-)
-
-// checkLengths caps free-text fields; nil means the field was not sent.
-func checkLengths(v apperr.Validator, name, email, address *string) {
-	if name != nil {
-		v.Check(len(*name) <= maxName, "recipient_name", "must have at most 120 characters")
-	}
-	if email != nil {
-		v.Check(len(*email) <= maxEmail, "recipient_email", "must be a valid e-mail")
-	}
-	if address != nil {
-		v.Check(len(*address) <= maxAddress, "address", "must have at most 300 characters")
+func recipientOf(d store.Delivery) recipient {
+	return recipient{
+		Name: d.RecipientName, Email: d.RecipientEmail, Phone: d.RecipientPhone,
+		PostalCode: d.PostalCode, Street: d.Street, Number: d.Number, Complement: d.Complement,
+		District: d.District, City: d.City, State: d.State, Reference: d.AddressReference,
+		Latitude: d.Latitude, Longitude: d.Longitude,
 	}
 }
 
-func (s *Service) isDriver(ctx context.Context, id int64) bool {
+// checkDriver refuses id unless it is a driver of the carrier; another
+// carrier's driver gets the same answer as a missing one.
+func (s *Service) checkDriver(ctx context.Context, v apperr.Validator, carrierID, id int64) error {
 	u, err := s.store.GetUserByID(ctx, id)
-	return err == nil && u.Role == auth.RoleDriver
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	v.Check(err == nil && u.Role == auth.RoleDriver && u.CarrierID == carrierID, "driver_id", "must be an existing driver")
+	return nil
 }
 
 // Tracking codes skip 0/O and 1/I so they are easy to read over the phone.

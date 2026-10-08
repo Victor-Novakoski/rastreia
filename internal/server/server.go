@@ -15,6 +15,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/delivery"
 	"github.com/Victor-Novakoski/rastreia/internal/httpx"
 	"github.com/Victor-Novakoski/rastreia/internal/push"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
 )
 
@@ -23,6 +24,7 @@ type Deps struct {
 	Auth       *auth.Handler
 	Users      *user.Handler
 	Deliveries *delivery.Handler
+	Routes     *route.Handler
 	// Live serves the WebSocket routes; nil leaves them out.
 	Live *delivery.LiveHandler
 	// Push serves the Web Push routes; nil (no VAPID key) leaves them out.
@@ -56,11 +58,16 @@ func New(d Deps) http.Handler {
 	}
 
 	r := chi.NewRouter()
+	// Unknown routes and methods answer in the same JSON as every other error.
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		httpx.Error(w, http.StatusNotFound, "not found")
+	})
+	r.MethodNotAllowed(methodNotAllowed(r))
 	r.Use(middleware.RequestID)
 	if opts.TrustProxy {
 		r.Use(trustedProxy)
 	}
-	r.Use(middleware.Logger, middleware.Recoverer)
+	r.Use(requestLog, recoverer)
 	r.Use(securityHeaders(opts.Production), corsPolicy(opts.CORSOrigins))
 	limit := func(name string, requests int) func(http.Handler) http.Handler {
 		return rateLimit(opts.Redis, name, requests)
@@ -91,7 +98,8 @@ func New(d Deps) http.Handler {
 			_, _ = w.Write(api.OpenAPI)
 		})
 
-		r.With(limit("login", opts.LoginRateLimit)).Post("/auth/login", d.Auth.Login)
+		r.With(limit("login", opts.LoginRateLimit), d.Auth.RefuseForeignOrigin).Post("/auth/login", d.Auth.Login)
+		r.With(limit("signup", opts.LoginRateLimit), d.Auth.RefuseForeignOrigin).Post("/auth/signup", d.Users.SignUp)
 		r.With(limit("refresh", opts.LoginRateLimit)).Post("/auth/refresh", d.Auth.Refresh)
 		r.With(limit("logout", opts.LoginRateLimit)).Post("/auth/logout", d.Auth.Logout)
 		// Its own, tighter limit makes guessing tracking codes slow.
@@ -102,23 +110,28 @@ func New(d Deps) http.Handler {
 			r.With(tracking).Delete("/public/tracking/{code}/push", d.Push.Unsubscribe)
 		}
 
-		r.Group(func(r chi.Router) {
-			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin))
+		r.With(d.Tokens.Authenticate).Get("/me", d.Users.Me)
 
+		// Everything below is scoped to the caller's carrier: the services
+		// filter by the carrier in the token and answer 404 for anything else.
+		r.Group(func(r chi.Router) {
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleCarrier))
+
+			r.Get("/summary", d.Deliveries.Summary)
 			r.Get("/drivers", d.Users.ListDrivers)
 			r.Post("/drivers", d.Users.CreateDriver)
 
 			r.Get("/deliveries", d.Deliveries.List)
 			r.Post("/deliveries", d.Deliveries.Create)
-			r.Get("/deliveries/{id}", d.Deliveries.Get)
 			r.Patch("/deliveries/{id}", d.Deliveries.Update)
 		})
 
 		// Drivers reach only their own deliveries here; the service answers 404
 		// for anyone else's.
 		r.Group(func(r chi.Router) {
-			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleAdmin, auth.RoleDriver))
+			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleCarrier, auth.RoleDriver))
 
+			r.Get("/deliveries/{id}", d.Deliveries.Get)
 			r.Get("/deliveries/{id}/events", d.Deliveries.ListEvents)
 			r.Post("/deliveries/{id}/events", d.Deliveries.AddEvent)
 		})
@@ -127,8 +140,26 @@ func New(d Deps) http.Handler {
 			r.Use(d.Tokens.Authenticate, auth.RequireRole(auth.RoleDriver))
 
 			r.Get("/me/deliveries", d.Deliveries.ListMine)
+			r.Get("/me/route", d.Routes.Today)
+			r.Post("/me/route/deliveries", d.Routes.Add)
+			r.Delete("/me/route/deliveries/{id}", d.Routes.Remove)
+			r.Put("/me/route/order", d.Routes.Reorder)
+			r.Post("/me/route/optimize", d.Routes.Optimize)
 		})
 	})
 
 	return r
+}
+
+// methodNotAllowed answers 405 with the methods the path does take in Allow,
+// as chi's own handler does.
+func methodNotAllowed(routes chi.Routes) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+			if routes.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		httpx.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }

@@ -30,7 +30,7 @@ func (f fakeUsers) GetUserByEmail(_ context.Context, email string) (store.User, 
 func TestLogin(t *testing.T) {
 	hash, err := HashPassword("correct-horse")
 	require.NoError(t, err)
-	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver, CarrierID: 1}}
 	tokens := NewTokens(testSecret, time.Hour)
 	h := NewHandler(users, tokens, NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
 
@@ -71,7 +71,7 @@ func TestLogin(t *testing.T) {
 func TestLogin_LocksAfterRepeatedFailures(t *testing.T) {
 	hash, err := HashPassword("correct-horse")
 	require.NoError(t, err)
-	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver, CarrierID: 1}}
 	h := NewHandler(users, NewTokens(testSecret, time.Hour), NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
 
 	login := func(password string) *httptest.ResponseRecorder {
@@ -105,7 +105,7 @@ func refreshCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 func TestRefreshAndLogout(t *testing.T) {
 	hash, err := HashPassword("correct-horse")
 	require.NoError(t, err)
-	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver, CarrierID: 1}}
 	tokens := NewTokens(testSecret, time.Hour)
 	h := NewHandler(users, tokens, NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour),
 		CookieOptions{AllowedOrigins: []string{testOrigin}})
@@ -140,7 +140,7 @@ func TestRefreshAndLogout(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	claims, err := tokens.Parse(resp.Token)
 	require.NoError(t, err)
-	assert.Equal(t, Claims{UserID: 7, Role: RoleDriver}, claims)
+	assert.Equal(t, Claims{UserID: 7, Role: RoleDriver, CarrierID: 1}, claims)
 	second := refreshCookie(t, rec)
 	assert.NotEqual(t, first.Value, second.Value)
 
@@ -148,6 +148,30 @@ func TestRefreshAndLogout(t *testing.T) {
 	rec = post(h.Refresh, testOrigin, second)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code, "session ended")
 	assert.Equal(t, -1, refreshCookie(t, rec).MaxAge, "invalid session clears the cookie")
+}
+
+func TestRefuseForeignOrigin(t *testing.T) {
+	h := NewHandler(fakeUsers{}, NewTokens(testSecret, time.Hour), NewLoginGuard(), NewSessions(newFakeSessions(), time.Hour),
+		CookieOptions{AllowedOrigins: []string{testOrigin}})
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+
+	for origin, want := range map[string]int{
+		testOrigin:             http.StatusTeapot,
+		"":                     http.StatusTeapot, // curl and other clients that are not browsers
+		"https://evil.example": http.StatusForbidden,
+		"null":                 http.StatusForbidden, // sandboxed iframe or file
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{}`))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		h.RefuseForeignOrigin(next).ServeHTTP(rec, req)
+		assert.Equal(t, want, rec.Code, origin)
+		if want == http.StatusForbidden {
+			assert.Empty(t, rec.Result().Cookies(), "no session for a form posted from another site")
+		}
+	}
 }
 
 type brokenGuard struct{ *LoginGuard }
@@ -159,7 +183,7 @@ func (brokenGuard) Check(context.Context, string) (time.Duration, error) {
 func TestLogin_WithoutGuardRefuses(t *testing.T) {
 	hash, err := HashPassword("correct-horse")
 	require.NoError(t, err)
-	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver}}
+	users := fakeUsers{"ana@example.com": {ID: 7, Email: "ana@example.com", PasswordHash: hash, Role: RoleDriver, CarrierID: 1}}
 	h := NewHandler(users, NewTokens(testSecret, time.Hour), brokenGuard{NewLoginGuard()}, NewSessions(newFakeSessions(), time.Hour), CookieOptions{})
 
 	rec := httptest.NewRecorder()

@@ -1,6 +1,6 @@
 // Package push lets the recipient ask for Web Push notifications about a
 // delivery from the public tracking page. The worker sends them (see
-// notify.Pusher).
+// notify.PushConsumer).
 package push
 
 import (
@@ -38,14 +38,19 @@ type Finder interface {
 
 type Store interface {
 	UpsertPushSubscription(ctx context.Context, arg store.UpsertPushSubscriptionParams) error
-	CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error)
+	CountPushSubscriptions(ctx context.Context, arg store.CountPushSubscriptionsParams) (int64, error)
 	DeletePushSubscription(ctx context.Context, arg store.DeletePushSubscriptionParams) error
 }
 
-// Subscription is what PushManager.subscribe() returns in the browser, as JSON.
+// Subscription is what PushManager.subscribe() returns in the browser, as
+// JSON (PushSubscription.toJSON()).
 type Subscription struct {
 	Endpoint string `json:"endpoint"`
-	Keys     struct {
+	// ExpirationTime comes with the JSON, null in every browser so far. It is
+	// accepted and ignored: a subscription that expires gets a 404 or 410
+	// from the push service, and the worker deletes it then.
+	ExpirationTime *float64 `json:"expirationTime"`
+	Keys           struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`
@@ -76,7 +81,7 @@ func (s *Service) Subscribe(ctx context.Context, code string, in Subscription) e
 	if d.Status == "delivered" {
 		return fmt.Errorf("%w: the delivery is already delivered", apperr.ErrConflict)
 	}
-	n, err := s.store.CountPushSubscriptions(ctx, d.ID)
+	n, err := s.store.CountPushSubscriptions(ctx, store.CountPushSubscriptionsParams{DeliveryID: d.ID, Endpoint: in.Endpoint})
 	if err != nil {
 		return err
 	}

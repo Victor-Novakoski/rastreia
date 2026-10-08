@@ -7,7 +7,12 @@ function fakeBrowser({ permission = 'default', subscribed = false } = {}) {
   let sub: FakeSub | null = null
   const makeSub = (): FakeSub => ({
     endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
-    toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'p', auth: 'a' } }),
+    // Como o navegador devolve: o expirationTime vem junto, quase sempre null.
+    toJSON: () => ({
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      expirationTime: null,
+      keys: { p256dh: 'p', auth: 'a' },
+    }),
     unsubscribe: vi.fn(async () => {
       sub = null
       return true

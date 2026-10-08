@@ -39,16 +39,19 @@ func (f *fakeSender) Publish(_ context.Context, _ string, body []byte) error {
 func newDelivery(t *testing.T, pool *pgxpool.Pool) delivery.Delivery {
 	t.Helper()
 	ctx := context.Background()
-	admin, err := store.New(pool).CreateUser(ctx, store.CreateUserParams{
-		Name: "Admin", Email: "admin@example.com", PasswordHash: "x", Role: auth.RoleAdmin,
+	carrierID := testdb.Carrier(t, pool)
+	u, err := store.New(pool).CreateUser(ctx, store.CreateUserParams{
+		CarrierID: carrierID, Name: "Dona", Email: "dona@example.com", PasswordHash: "x", Role: auth.RoleCarrier,
 	})
 	require.NoError(t, err)
+	owner := auth.Claims{UserID: u.ID, Role: auth.RoleCarrier, CarrierID: carrierID}
 	svc := delivery.NewService(delivery.NewPGStore(pool))
-	d, err := svc.Create(ctx, admin.ID, delivery.CreateInput{
-		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", Address: "Rua A, 10",
+	d, err := svc.Create(ctx, owner, delivery.CreateInput{
+		RecipientName: "Maria Souza", RecipientEmail: "maria@example.com", RecipientPhone: "11987654321",
+		PostalCode: "01001000", Street: "Praça da Sé", Number: "10", District: "Sé", City: "São Paulo", State: "SP",
 	})
 	require.NoError(t, err)
-	_, err = svc.AddEvent(ctx, auth.Claims{UserID: admin.ID, Role: auth.RoleAdmin}, d.ID,
+	_, err = svc.AddEvent(ctx, owner, d.ID,
 		delivery.EventInput{Status: delivery.StatusPickedUp})
 	require.NoError(t, err)
 	return d

@@ -2,11 +2,14 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/Victor-Novakoski/rastreia/internal/apperr"
 )
@@ -27,7 +30,9 @@ func Error(w http.ResponseWriter, status int, msg string) {
 	JSON(w, status, errorBody{Error: msg})
 }
 
-// Decode reads a JSON body into dst, rejecting unknown fields and bodies over 1 MB.
+// Decode reads a JSON body into dst, rejecting unknown fields, bodies over
+// 1 MB and text with a NUL character (\u0000), which JSON allows and
+// PostgreSQL does not store.
 func Decode(w http.ResponseWriter, r *http.Request, dst any) error {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
@@ -37,7 +42,38 @@ func Decode(w http.ResponseWriter, r *http.Request, dst any) error {
 		}
 		return errors.New("invalid JSON body")
 	}
+	if hasNUL(reflect.ValueOf(dst)) {
+		return errors.New(`text must not contain \u0000`)
+	}
 	return nil
+}
+
+func hasNUL(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.String:
+		return strings.ContainsRune(v.String(), 0)
+	case reflect.Pointer, reflect.Interface:
+		return !v.IsNil() && hasNUL(v.Elem())
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if hasNUL(v.Field(i)) {
+				return true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if hasNUL(v.Index(i)) {
+				return true
+			}
+		}
+	case reflect.Map:
+		for it := v.MapRange(); it.Next(); {
+			if hasNUL(it.Key()) || hasNUL(it.Value()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type validationBody struct {
@@ -45,11 +81,20 @@ type validationBody struct {
 	Fields map[string]string `json:"fields"`
 }
 
+// statusClientClosed is what nginx logs when the client gave up first.
+const statusClientClosed = 499
+
 // WriteError maps service errors to HTTP responses. Unknown errors become 500
 // without leaking their message.
 func WriteError(w http.ResponseWriter, err error) {
 	var verr *apperr.ValidationError
 	switch {
+	case errors.Is(err, context.Canceled):
+		// The client went away (closed the page, cancelled the request), so
+		// nobody reads the answer and nothing went wrong here.
+		w.WriteHeader(statusClientClosed)
+	case errors.Is(err, context.DeadlineExceeded):
+		Error(w, http.StatusGatewayTimeout, "the request took too long")
 	case errors.As(err, &verr):
 		JSON(w, http.StatusUnprocessableEntity, validationBody{Error: "invalid input", Fields: verr.Fields})
 	case errors.Is(err, apperr.ErrNotFound):

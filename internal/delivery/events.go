@@ -100,7 +100,7 @@ func (s *Service) AddEvent(ctx context.Context, actor auth.Claims, deliveryID in
 	if err != nil {
 		return Event{}, err
 	}
-	s.announce(ctx, deliveryID, d.TrackingCode, in.Status, true)
+	s.announce(ctx, d.CarrierID, deliveryID, d.TrackingCode, in.Status, true)
 	return eventFromStore(ev), nil
 }
 
@@ -120,14 +120,18 @@ func (s *Service) ListEvents(ctx context.Context, actor auth.Claims, deliveryID 
 	return out, nil
 }
 
-// visible loads a delivery the actor is allowed to see: admins see all,
-// drivers only their own.
+// visible loads a delivery the actor is allowed to see: a carrier sees its
+// own deliveries, a driver only the ones assigned to them. Anything else
+// gets the same not found as a missing delivery.
 func (s *Service) visible(ctx context.Context, actor auth.Claims, id int64) (store.Delivery, error) {
 	d, err := s.store.GetDelivery(ctx, id)
 	if err != nil {
 		return store.Delivery{}, notFound(err)
 	}
-	if actor.Role != auth.RoleAdmin && (d.DriverID == nil || *d.DriverID != actor.UserID) {
+	if d.CarrierID != actor.CarrierID {
+		return store.Delivery{}, apperr.ErrNotFound
+	}
+	if actor.Role != auth.RoleCarrier && (d.DriverID == nil || *d.DriverID != actor.UserID) {
 		return store.Delivery{}, apperr.ErrNotFound
 	}
 	return d, nil

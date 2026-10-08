@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Victor-Novakoski/rastreia/internal/apperr"
+	"github.com/Victor-Novakoski/rastreia/internal/auth"
 )
 
 func TestCreateIdempotent(t *testing.T) {
@@ -16,24 +17,24 @@ func TestCreateIdempotent(t *testing.T) {
 	svc := NewService(fs)
 	ctx := context.Background()
 
-	first, replayed, err := svc.CreateIdempotent(ctx, admin.UserID, "key-1", validInput())
+	first, replayed, err := svc.CreateIdempotent(ctx, owner, "key-1", validInput())
 	require.NoError(t, err)
 	assert.False(t, replayed)
 
 	again := validInput()
 	again.RecipientName = "Maria Souza" // same request after normalization
-	second, replayed, err := svc.CreateIdempotent(ctx, admin.UserID, "key-1", again)
+	second, replayed, err := svc.CreateIdempotent(ctx, owner, "key-1", again)
 	require.NoError(t, err)
 	assert.True(t, replayed)
 	assert.Equal(t, first.ID, second.ID)
 	assert.Len(t, fs.deliveries, 1, "a retry does not create another delivery")
 	assert.Len(t, fs.events, 1, "nor another event")
 
-	other, _, err := svc.CreateIdempotent(ctx, admin.UserID, "key-2", validInput())
+	other, _, err := svc.CreateIdempotent(ctx, owner, "key-2", validInput())
 	require.NoError(t, err)
 	assert.NotEqual(t, first.ID, other.ID, "a new key creates a new delivery")
 
-	otherUser, replayed, err := svc.CreateIdempotent(ctx, 99, "key-1", validInput())
+	otherUser, replayed, err := svc.CreateIdempotent(ctx, auth.Claims{UserID: 99, Role: auth.RoleCarrier, CarrierID: 1}, "key-1", validInput())
 	require.NoError(t, err)
 	assert.False(t, replayed, "keys are per user")
 	assert.NotEqual(t, first.ID, otherUser.ID)
@@ -42,11 +43,11 @@ func TestCreateIdempotent(t *testing.T) {
 func TestCreateIdempotent_Rejects(t *testing.T) {
 	svc := NewService(newFakeStore())
 	ctx := context.Background()
-	_, _, err := svc.CreateIdempotent(ctx, admin.UserID, "key-1", validInput())
+	_, _, err := svc.CreateIdempotent(ctx, owner, "key-1", validInput())
 	require.NoError(t, err)
 
 	changed := validInput()
-	changed.Address = "Rua B, 20"
+	changed.Number = "20"
 	cases := map[string]struct {
 		key string
 		in  CreateInput
@@ -58,7 +59,7 @@ func TestCreateIdempotent_Rejects(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := svc.CreateIdempotent(ctx, admin.UserID, tc.key, tc.in)
+			_, _, err := svc.CreateIdempotent(ctx, owner, tc.key, tc.in)
 			var verr *apperr.ValidationError
 			require.ErrorAs(t, err, &verr)
 			assert.Contains(t, verr.Fields, "idempotency_key")

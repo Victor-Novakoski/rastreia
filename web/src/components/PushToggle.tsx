@@ -24,13 +24,16 @@ export function PushToggle({ code }: { code: string }) {
   async function toggle() {
     setBusy(true)
     setError('')
+    const turningOff = state === 'on'
     try {
-      setState(state === 'on' ? await disablePush(code) : await enablePush(code))
+      setState(turningOff ? await disablePush(code) : await enablePush(code))
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 409
           ? 'Esta entrega não aceita mais avisos.'
-          : 'Não foi possível ativar os avisos. Tente de novo.',
+          : turningOff
+            ? 'Não foi possível desativar os avisos. Tente de novo.'
+            : 'Não foi possível ativar os avisos. Tente de novo.',
       )
     } finally {
       setBusy(false)

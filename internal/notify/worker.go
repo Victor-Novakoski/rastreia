@@ -21,6 +21,17 @@ type Consumer struct {
 	// MaxAttempts counts the first try; after that the message is parked
 	// in the dead queue for someone to look at.
 	MaxAttempts int64
+	// MaxAge drops messages about changes older than this without handling
+	// them, like the relay does before publishing: after the worker was
+	// down for a night, a pile of old statuses only confuses the recipient.
+	MaxAge time.Duration
+}
+
+// DiscardConsumer empties a queue nobody handles. Every status change is
+// routed to the push queue too, so without VAPID keys the worker still
+// reads it, or the messages would pile up in RabbitMQ.
+func DiscardConsumer(queue string) Consumer {
+	return Consumer{Queue: queue, Handle: func(context.Context, StatusChanged) error { return nil }}
 }
 
 // Worker runs consumers on one RabbitMQ connection.
@@ -34,6 +45,9 @@ func NewWorker(url string, consumers ...Consumer) *Worker {
 		if consumers[i].MaxAttempts == 0 {
 			consumers[i].MaxAttempts = 5
 		}
+		if consumers[i].MaxAge == 0 {
+			consumers[i].MaxAge = time.Hour
+		}
 	}
 	return &Worker{url: url, consumers: consumers}
 }
@@ -42,9 +56,13 @@ func NewWorker(url string, consumers ...Consumer) *Worker {
 func (w *Worker) Run(ctx context.Context) error {
 	backoff := time.Second
 	for {
+		started := time.Now()
 		err := w.consume(ctx)
 		if ctx.Err() != nil {
 			return nil
+		}
+		if time.Since(started) > time.Minute {
+			backoff = time.Second // it ran for a while: a new outage starts over
 		}
 		slog.Error("worker disconnected", "err", err, "retry_in", backoff.String())
 		select {
@@ -114,9 +132,13 @@ func (c Consumer) loop(ctx context.Context, ch *amqp.Channel, msgs <-chan amqp.D
 func (c Consumer) handle(ctx context.Context, ch *amqp.Channel, d amqp.Delivery) error {
 	var m StatusChanged
 	err := json.Unmarshal(d.Body, &m)
-	if err != nil {
+	switch {
+	case err != nil:
 		err = ErrBadMessage{err}
-	} else {
+	case c.MaxAge > 0 && time.Since(m.OccurredAt) > c.MaxAge:
+		slog.Info("notification dropped, too old", "queue", c.Queue, "message_id", d.MessageId, "occurred_at", m.OccurredAt)
+		return d.Ack(false)
+	default:
 		err = c.Handle(ctx, m)
 	}
 	if err == nil {

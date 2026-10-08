@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -14,6 +15,7 @@ func validConfig() Config {
 		AdminEmail:  "admin@example.com", AdminPassword: "a-strong-password",
 		CORSOrigins:   "https://rastreia.dev, https://www.rastreia.dev",
 		RetentionDays: 90,
+		JWTTTL:        15 * time.Minute, RefreshTTL: 168 * time.Hour,
 	}
 }
 
@@ -32,6 +34,8 @@ func TestValidate(t *testing.T) {
 		"dev secret in prod":   func(c *Config) { c.JWTSecret = devJWTSecret },
 		"dev password in prod": func(c *Config) { c.AdminPassword = devAdminPassword },
 		"http origin in prod":  func(c *Config) { c.CORSOrigins = "http://rastreia.dev" },
+		"no token ttl":         func(c *Config) { c.JWTTTL = 0 },
+		"session shorter":      func(c *Config) { c.RefreshTTL = c.JWTTTL },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

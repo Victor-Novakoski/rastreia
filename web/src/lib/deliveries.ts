@@ -3,11 +3,31 @@ import type { Status } from './status'
 
 type Api = AuthContextValue['api']
 
-export type Delivery = {
+/** Endereço em partes. Entregas antigas só têm `address` e as partes vazias. */
+export type AddressParts = {
+  /** Só os dígitos, com DDD. */
+  recipient_phone: string
+  /** CEP, só os dígitos. */
+  postal_code: string
+  street: string
+  number: string
+  complement: string
+  district: string
+  city: string
+  /** UF. */
+  state: string
+  /** Ponto de referência ou recado para o motorista. */
+  address_reference: string
+  latitude: number | null
+  longitude: number | null
+}
+
+export type Delivery = AddressParts & {
   id: number
   tracking_code: string
   recipient_name: string
   recipient_email: string
+  /** Endereço numa linha, montado pela API a partir das partes. */
   address: string
   status: Status
   driver_id: number | null
@@ -32,22 +52,34 @@ export type PanelChange = { delivery_id: number; status: Status }
 
 export type Driver = { id: number; name: string; email: string; role: 'driver'; created_at: string }
 
-export type DeliveryInput = {
+export type DeliveryInput = AddressParts & {
   recipient_name: string
   recipient_email: string
-  address: string
   driver_id?: number
 }
 
 export const pageSize = 20
 
-export function listDeliveries(api: Api, params: { status?: Status; page: number }, signal?: AbortSignal) {
+/** Filtro de motorista da lista: sem motorista ou o id de um deles. */
+export type DriverFilter = 'none' | number
+
+/**
+ * `search` procura parte do código ou do nome ou e-mail do destinatário, sem
+ * diferenciar acento. Os filtros se somam.
+ */
+export function listDeliveries(
+  api: Api,
+  params: { status?: Status; search?: string; driver?: DriverFilter; page: number },
+  signal?: AbortSignal,
+) {
   const q = new URLSearchParams({ page: String(params.page), size: String(pageSize) })
   if (params.status) q.set('status', params.status)
+  if (params.search) q.set('q', params.search)
+  if (params.driver !== undefined) q.set('driver', String(params.driver))
   return api<Delivery[]>(`/deliveries?${q}`, { signal })
 }
 
-/** Até 100 entregas do motorista, mais recentes primeiro. */
+/** Até 100 entregas do motorista: as que faltam fazer primeiro, depois as concluídas. */
 export function listMyDeliveries(api: Api, signal?: AbortSignal) {
   return api<Delivery[]>('/me/deliveries?size=100', { signal })
 }
@@ -83,4 +115,11 @@ export function listDrivers(api: Api, signal?: AbortSignal) {
 
 export function createDriver(api: Api, input: { name: string; email: string; password: string }) {
   return api<Driver>('/drivers', { method: 'POST', body: input })
+}
+
+/** Números da visão geral: entregas por status nos últimos 30 dias e as sem motorista. */
+export type Summary = { since: string; by_status: Record<Status, number>; unassigned: number }
+
+export function getSummary(api: Api, signal?: AbortSignal) {
+  return api<Summary>('/summary', { signal })
 }

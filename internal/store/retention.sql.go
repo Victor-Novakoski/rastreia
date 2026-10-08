@@ -15,26 +15,74 @@ WITH d AS (
     UPDATE deliveries SET
         recipient_name  = 'Destinatário removido',
         recipient_email = '',
+        recipient_phone = '',
         address         = '',
+        postal_code     = '',
+        street          = '',
+        number          = '',
+        complement      = '',
+        district        = '',
+        address_reference = '',
+        latitude        = NULL,
+        longitude       = NULL,
         anonymized_at   = now(),
         updated_at      = now()
     WHERE anonymized_at IS NULL
-      AND status IN ('delivered', 'failed')
-      AND completed_at < $1::timestamptz
+      AND ((status IN ('delivered', 'failed') AND completed_at < $1::timestamptz)
+           OR (status NOT IN ('delivered', 'failed') AND created_at < $2::timestamptz))
     RETURNING id
 ), e AS (
     UPDATE delivery_events SET note = NULL
     WHERE delivery_id IN (SELECT id FROM d) AND note IS NOT NULL
+), s AS (
+    DELETE FROM push_subscriptions
+    WHERE delivery_id IN (SELECT id FROM d)
 )
 SELECT count(*) FROM d
 `
 
+type AnonymizeDeliveriesParams struct {
+	Before          time.Time
+	AbandonedBefore time.Time
+}
+
 // AnonymizeDeliveries erases the recipient of deliveries finished before
-// the given time, and the drivers' notes, which are free text and may name
-// people. Returns how many deliveries were anonymized.
-func (q *Queries) AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error) {
-	row := q.db.QueryRow(ctx, anonymizeDeliveries, before)
+// the given time, and of the ones never finished that were created before
+// abandoned_before; also the drivers' notes, which are free text and may name
+// people, and the browsers still following them (a failed delivery keeps
+// them). Returns how many deliveries were anonymized.
+func (q *Queries) AnonymizeDeliveries(ctx context.Context, arg AnonymizeDeliveriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, anonymizeDeliveries, arg.Before, arg.AbandonedBefore)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteExpiredRefreshTokens = `-- name: DeleteExpiredRefreshTokens :execrows
+DELETE FROM refresh_tokens WHERE expires_at < now()
+`
+
+// DeleteExpiredRefreshTokens drops the refresh tokens that no longer log
+// anyone in. Reuse is only checked on tokens that have not expired, so
+// nothing is lost.
+func (q *Queries) DeleteExpiredRefreshTokens(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredRefreshTokens)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteOldIdempotencyKeys = `-- name: DeleteOldIdempotencyKeys :execrows
+DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'
+`
+
+// DeleteOldIdempotencyKeys drops the keys older than the 24 hours in which a
+// retry can still use them.
+func (q *Queries) DeleteOldIdempotencyKeys(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldIdempotencyKeys)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

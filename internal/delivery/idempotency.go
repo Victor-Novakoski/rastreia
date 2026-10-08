@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Victor-Novakoski/rastreia/internal/apperr"
+	"github.com/Victor-Novakoski/rastreia/internal/auth"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 )
 
@@ -19,20 +20,22 @@ const maxIdempotencyKey = 255
 // the same user within 24 hours returns the delivery created the first time
 // (replayed is true) instead of creating another one. Reusing a key with a
 // different request is rejected.
-func (s *Service) CreateIdempotent(ctx context.Context, actorID int64, key string, in CreateInput) (d Delivery, replayed bool, err error) {
+func (s *Service) CreateIdempotent(ctx context.Context, actor auth.Claims, key string, in CreateInput) (d Delivery, replayed bool, err error) {
 	v := apperr.Validator{}
 	v.Check(validIdempotencyKey(key), "idempotency_key", "must have 1 to 255 visible ASCII characters")
 	if err := v.Err(); err != nil {
 		return Delivery{}, false, err
 	}
-	if err := s.validateCreate(ctx, &in); err != nil {
+	rec, err := s.validateCreate(ctx, actor.CarrierID, in)
+	if err != nil {
 		return Delivery{}, false, err
 	}
-	hash, err := requestHash(in)
+	hash, err := requestHash(rec, in.DriverID)
 	if err != nil {
 		return Delivery{}, false, err
 	}
 
+	actorID := actor.UserID
 	err = s.retryOnCodeCollision(ctx, func(q Store) error {
 		k := store.GetIdempotencyKeyParams{UserID: actorID, Key: key}
 		if err := q.DeleteExpiredIdempotencyKey(ctx, store.DeleteExpiredIdempotencyKeyParams(k)); err != nil {
@@ -47,13 +50,13 @@ func (s *Service) CreateIdempotent(ctx context.Context, actorID int64, key strin
 		if err != nil {
 			return err
 		}
-		if d, err = s.insert(ctx, q, actorID, in); err != nil {
+		if d, err = s.insert(ctx, q, actor, rec, in.DriverID); err != nil {
 			return err
 		}
 		return q.SetIdempotencyKeyDelivery(ctx, store.SetIdempotencyKeyDeliveryParams{UserID: actorID, Key: key, DeliveryID: &d.ID})
 	})
 	if err == nil && !replayed {
-		s.announce(ctx, d.ID, d.TrackingCode, d.Status, false)
+		s.announce(ctx, d.CarrierID, d.ID, d.TrackingCode, d.Status, false)
 	}
 	return d, replayed, err
 }
@@ -81,8 +84,11 @@ func (s *Service) replay(ctx context.Context, q Store, k store.GetIdempotencyKey
 
 // requestHash fingerprints the normalized input, so the same request sent
 // with different spacing or casing still matches.
-func requestHash(in CreateInput) (string, error) {
-	b, err := json.Marshal(in)
+func requestHash(r recipient, driverID *int64) (string, error) {
+	b, err := json.Marshal(struct {
+		Recipient recipient
+		DriverID  *int64
+	}{r, driverID})
 	if err != nil {
 		return "", err
 	}

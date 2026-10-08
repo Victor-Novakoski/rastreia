@@ -3,7 +3,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import { App } from './App'
-import { AuthProvider } from './components/AuthProvider'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { Crashed } from './components/States'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -12,12 +13,12 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
+    <ErrorBoundary fallback={<Crashed />}>
+      <BrowserRouter>
+        <QueryClientProvider client={queryClient}>
           <App />
-        </AuthProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
+        </QueryClientProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

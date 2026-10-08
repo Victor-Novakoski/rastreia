@@ -21,6 +21,7 @@ import (
 	"github.com/Victor-Novakoski/rastreia/internal/push"
 	"github.com/Victor-Novakoski/rastreia/internal/realtime"
 	"github.com/Victor-Novakoski/rastreia/internal/retention"
+	"github.com/Victor-Novakoski/rastreia/internal/route"
 	"github.com/Victor-Novakoski/rastreia/internal/server"
 	"github.com/Victor-Novakoski/rastreia/internal/store"
 	"github.com/Victor-Novakoski/rastreia/internal/user"
@@ -92,7 +93,7 @@ func run() error {
 	}
 
 	if cfg.AdminEmail != "" {
-		err := users.EnsureAdmin(ctx, user.CreateInput{
+		err := users.EnsureDemoCarrier(ctx, user.CreateInput{
 			Name: cfg.AdminName, Email: cfg.AdminEmail, Password: cfg.AdminPassword,
 		})
 		if err != nil {
@@ -100,15 +101,17 @@ func run() error {
 		}
 	}
 
+	authHandler := auth.NewHandler(queries, tokens, guard,
+		auth.NewSessions(queries, cfg.RefreshTTL),
+		auth.CookieOptions{AllowedOrigins: cfg.AllowedOrigins()})
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: server.New(server.Deps{
-			Tokens: tokens,
-			Auth: auth.NewHandler(queries, tokens, guard,
-				auth.NewSessions(queries, cfg.RefreshTTL),
-				auth.CookieOptions{AllowedOrigins: cfg.AllowedOrigins()}),
-			Users:      user.NewHandler(users),
+			Tokens:     tokens,
+			Auth:       authHandler,
+			Users:      user.NewHandler(users, authHandler),
 			Deliveries: delivery.NewHandler(deliveries),
+			Routes:     route.NewHandler(route.NewService(route.NewPGStore(pool), deliveries)),
 			Live:       delivery.NewLiveHandler(deliveries, live, tokens),
 			Push:       pushes,
 			Ready: func(r *http.Request) error {

@@ -36,7 +36,7 @@ func securityHeaders(production bool) func(http.Handler) http.Handler {
 func corsPolicy(origins []string) func(http.Handler) http.Handler {
 	return cors.Handler(cors.Options{
 		AllowedOrigins: origins,
-		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowedHeaders: []string{"Authorization", "Content-Type", "Idempotency-Key"},
 		ExposedHeaders: []string{"Retry-After", "Idempotent-Replayed"},
 		// The refresh token travels in a cookie (SECURITY.md #14 and #18).
@@ -45,14 +45,15 @@ func corsPolicy(origins []string) func(http.Handler) http.Handler {
 	})
 }
 
-// rateLimit allows requests per minute per client IP, taken from
-// r.RemoteAddr (already rewritten by trustedProxy when the API is behind one).
-// With a Redis client the count is shared by every API instance, and name
+// rateLimit allows requests per minute per client: its IP, taken from
+// r.RemoteAddr (already rewritten by trustedProxy when the API is behind one),
+// or its /64 network for IPv6 (see httpx.ClientKey). With a Redis client the count is shared by every API instance, and name
 // keeps each limit's keys apart. If Redis stops answering, each instance
 // counts in memory until it is back.
 func rateLimit(rdb redis.UniversalClient, name string, requests int) func(http.Handler) http.Handler {
 	opts := []httprate.Option{
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			httpx.AddLogAttrs(r.Context(), slog.String("reason", "rate limit "+name))
 			httpx.Error(w, http.StatusTooManyRequests, "too many requests, try again later")
 		}),
 	}
@@ -66,5 +67,9 @@ func rateLimit(rdb redis.UniversalClient, name string, requests int) func(http.H
 			},
 		}))
 	}
-	return httprate.LimitBy(requests, time.Minute, remoteIP, opts...)
+	return httprate.LimitBy(requests, time.Minute, rateKey, opts...)
+}
+
+func rateKey(r *http.Request) (string, error) {
+	return httpx.ClientKey(r), nil
 }

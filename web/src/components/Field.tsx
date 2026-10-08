@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useId, type ComponentProps, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 const control =
   'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 focus:border-brand-600 focus:outline-2 focus:outline-brand-600 aria-invalid:border-danger-fg disabled:bg-slate-100'
@@ -13,7 +13,11 @@ function Wrapper({ id, label, error, hint, children }: Common & { id: string; ch
         {label}
       </label>
       {children}
-      {hint && !error && <p className="text-sm text-slate-600">{hint}</p>}
+      {hint && !error && (
+        <p id={`${id}-hint`} className="text-sm text-slate-600">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={`${id}-error`} className="text-sm text-danger-fg">
           {error}
@@ -23,15 +27,20 @@ function Wrapper({ id, label, error, hint, children }: Common & { id: string; ch
   )
 }
 
-function a11y(id: string, error?: string) {
-  return { id, 'aria-invalid': error ? true : undefined, 'aria-describedby': error ? `${id}-error` : undefined }
+/** O leitor de tela lê a mensagem de erro, ou a dica quando não há erro. */
+function a11y(id: string, error?: string, hint?: string) {
+  return {
+    id,
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': error ? `${id}-error` : hint ? `${id}-hint` : undefined,
+  }
 }
 
-export function TextField({ label, error, hint, ...rest }: Common & InputHTMLAttributes<HTMLInputElement>) {
+export function TextField({ label, error, hint, ...rest }: Common & ComponentProps<'input'>) {
   const id = useId()
   return (
     <Wrapper id={id} label={label} error={error} hint={hint}>
-      <input {...rest} {...a11y(id, error)} className={control} />
+      <input {...rest} {...a11y(id, error, hint)} className={control} />
     </Wrapper>
   )
 }
@@ -40,7 +49,7 @@ export function TextArea({ label, error, hint, ...rest }: Common & TextareaHTMLA
   const id = useId()
   return (
     <Wrapper id={id} label={label} error={error} hint={hint}>
-      <textarea {...rest} {...a11y(id, error)} className={`${control} py-2`} />
+      <textarea {...rest} {...a11y(id, error, hint)} className={`${control} py-2`} />
     </Wrapper>
   )
 }
@@ -49,7 +58,7 @@ export function SelectField({ label, error, hint, children, ...rest }: Common & 
   const id = useId()
   return (
     <Wrapper id={id} label={label} error={error} hint={hint}>
-      <select {...rest} {...a11y(id, error)} className={control}>
+      <select {...rest} {...a11y(id, error, hint)} className={control}>
         {children}
       </select>
     </Wrapper>

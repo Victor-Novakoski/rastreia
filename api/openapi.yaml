@@ -2,7 +2,15 @@ openapi: 3.0.3
 info:
   title: Rastreia API
   version: 0.1.0
-  description: Delivery tracking API. Admins create deliveries and drivers; drivers update status; customers follow a public tracking link.
+  description: |
+    Delivery tracking API. Carriers (transportadoras) sign up on their own and are tenants: every
+    authenticated route only sees the caller's carrier, and anything from another carrier answers 404.
+    Carriers create deliveries and drivers; drivers update status; customers follow a public tracking link.
+
+    Every route counts toward a global limit of 120 requests per minute per IP, or per /64 network
+    on IPv6 (429 with Retry-After). Bodies are JSON up to 1 MB; unknown fields and text holding
+    `\u0000` answer 400. A request that runs for more than 15 seconds answers 504. Errors always
+    come as `{"error": "..."}`, plus `fields` on 422.
 servers:
   - url: http://localhost:8080
 components:
@@ -14,38 +22,135 @@ components:
   schemas:
     Error:
       type: object
+      required: [error]
       properties:
         error: { type: string }
     ValidationError:
       type: object
+      required: [error, fields]
       properties:
         error: { type: string, example: invalid input }
         fields:
           type: object
+          description: The message for each field that failed, in English (the front translates it)
           additionalProperties: { type: string }
+          example: { postal_code: must have 8 digits }
     User:
       type: object
+      required: [id, name, email, role, carrier_id, created_at]
       properties:
         id: { type: integer, format: int64 }
         name: { type: string }
         email: { type: string, format: email }
-        role: { type: string, enum: [admin, driver] }
+        role: { $ref: "#/components/schemas/Role" }
+        carrier_id: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
+    Role:
+      type: string
+      enum: [carrier, driver]
+      description: carrier runs a carrier (transportadora); driver delivers for it
+    Carrier:
+      type: object
+      required: [id, name, document]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string, example: Expresso Sul }
+        document: { type: string, nullable: true, description: CNPJ without punctuation }
+    Me:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [carrier]
+          properties:
+            carrier: { $ref: "#/components/schemas/Carrier" }
+    Password:
+      type: string
+      minLength: 10
+      description: At most 72 bytes. Common passwords and passwords made from the e-mail are refused.
+    SignUp:
+      type: object
+      additionalProperties: false
+      required: [carrier_name, name, email, password]
+      properties:
+        carrier_name: { type: string, maxLength: 120 }
+        document:
+          type: string
+          nullable: true
+          description: |
+            Optional CNPJ, with or without punctuation. The alphanumeric format (letters in the first
+            12 characters) is accepted. Must be unique.
+        name: { type: string, maxLength: 120, description: Name of the person who runs the carrier }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { $ref: "#/components/schemas/Password" }
+    Summary:
+      type: object
+      required: [since, by_status, unassigned]
+      properties:
+        since: { type: string, format: date-time, description: Deliveries created from here on (30 days) are counted }
+        by_status:
+          type: object
+          description: Every status is present, with 0 when there is none
+          additionalProperties: { type: integer }
+          example: { pending: 4, picked_up: 2, in_transit: 3, delivered: 20, failed: 1 }
+        unassigned: { type: integer, description: "Pending deliveries without a driver, whenever created" }
     CreateDriver:
       type: object
+      additionalProperties: false
       required: [name, email, password]
       properties:
-        name: { type: string }
-        email: { type: string, format: email }
-        password: { type: string, minLength: 10, description: At most 72 bytes; common passwords are refused }
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { $ref: "#/components/schemas/Password" }
+    State:
+      type: string
+      description: UF
+      example: SP
+      enum: [AC, AL, AP, AM, BA, CE, DF, ES, GO, MA, MT, MS, MG, PA, PB, PR, PE, PI, RJ, RN, RS, RO, RR, SC, SP, SE, TO]
     Delivery:
       type: object
+      required:
+        - id
+        - tracking_code
+        - recipient_name
+        - recipient_email
+        - address
+        - recipient_phone
+        - postal_code
+        - street
+        - number
+        - complement
+        - district
+        - city
+        - state
+        - address_reference
+        - latitude
+        - longitude
+        - status
+        - driver_id
+        - created_at
+        - updated_at
+        - completed_at
+        - anonymized_at
       properties:
         id: { type: integer, format: int64 }
         tracking_code: { type: string, example: RS7K2M9QXA4P }
         recipient_name: { type: string }
-        recipient_email: { type: string, format: email }
-        address: { type: string }
+        recipient_email: { type: string, description: "An e-mail; empty once anonymized" }
+        address:
+          type: string
+          description: The whole address in one line, built from the parts below
+          example: Praça da Sé, 10, Apto 2 - Sé, São Paulo - SP, 01001-000
+        recipient_phone: { type: string, example: "11987654321", description: "Digits only; empty for deliveries created before the address had parts" }
+        postal_code: { type: string, example: "01001000", description: "CEP, 8 digits; empty for deliveries created before the address had parts" }
+        street: { type: string }
+        number: { type: string, example: "S/N" }
+        complement: { type: string, description: Empty when there is none }
+        district: { type: string, description: Bairro }
+        city: { type: string }
+        state: { type: string, example: SP, description: UF }
+        address_reference: { type: string, description: "Ponto de referência or notes for the driver; empty when there is none" }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
         status: { $ref: "#/components/schemas/Status" }
         driver_id: { type: integer, format: int64, nullable: true }
         created_at: { type: string, format: date-time }
@@ -60,21 +165,37 @@ components:
           format: date-time
           nullable: true
           description: |
-            When the recipient's name, e-mail and address were erased, RETENTION_DAYS after the
-            delivery was finished. Such a delivery answers 409 to PATCH and to new events.
+            When the recipient's data was erased: RETENTION_DAYS after the delivery was finished, or a
+            year after it was created if it never was. The name becomes "Destinatário removido"; e-mail,
+            phone, address (all parts but city and state), reference, map position and event notes
+            are emptied. Such a delivery answers 409 to PATCH and to new events, and its public link
+            answers 404.
     Status:
       type: string
       enum: [pending, picked_up, in_transit, delivered, failed]
     CreateDelivery:
       type: object
-      required: [recipient_name, recipient_email, address]
+      additionalProperties: false
+      required: [recipient_name, recipient_email, recipient_phone, postal_code, street, number, district, city, state]
+      description: Latitude and longitude are optional and go together; the carrier's form places the address on a map.
       properties:
-        recipient_name: { type: string }
-        recipient_email: { type: string, format: email }
-        address: { type: string }
-        driver_id: { type: integer, format: int64 }
+        recipient_name: { type: string, maxLength: 120 }
+        recipient_email: { type: string, format: email, maxLength: 254 }
+        recipient_phone: { type: string, example: "11987654321", description: "10 or 11 digits with the area code (punctuation is ignored)" }
+        postal_code: { type: string, example: "01001000", description: "CEP, 8 digits (punctuation is ignored)" }
+        street: { type: string, maxLength: 200 }
+        number: { type: string, maxLength: 20, example: "S/N" }
+        complement: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100, description: Bairro }
+        city: { type: string, maxLength: 100 }
+        state: { $ref: "#/components/schemas/State" }
+        address_reference: { type: string, maxLength: 300, description: Ponto de referência or notes for the driver }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
+        driver_id: { type: integer, format: int64, nullable: true, description: "A driver of the same carrier; null or absent leaves it without one" }
     Event:
       type: object
+      required: [id, delivery_id, status, note, created_by, created_at]
       properties:
         id: { type: integer, format: int64 }
         delivery_id: { type: integer, format: int64 }
@@ -84,6 +205,7 @@ components:
         created_at: { type: string, format: date-time }
     CreateEvent:
       type: object
+      additionalProperties: false
       required: [status]
       description: |
         Allowed transitions: pending → picked_up | failed; picked_up → in_transit | failed;
@@ -93,15 +215,18 @@ components:
         note: { type: string, maxLength: 500, description: Required when status is failed }
     Session:
       type: object
+      required: [token, role, expires_in]
       properties:
         token: { type: string, description: Access token for the Authorization header }
-        role: { type: string, enum: [admin, driver] }
+        role: { $ref: "#/components/schemas/Role" }
         expires_in: { type: integer, description: Access token lifetime in seconds, example: 900 }
     Tracking:
       type: object
-      description: Public view of a delivery. No e-mail, address, last name, driver or notes.
+      description: "Public view of a delivery. No e-mail, phone, address, map position, last name, driver or notes."
+      required: [tracking_code, carrier_name, status, recipient_first_name, updated_at, events]
       properties:
         tracking_code: { type: string, example: RS7K2M9QXA4P }
+        carrier_name: { type: string, example: Expresso Sul }
         status: { $ref: "#/components/schemas/Status" }
         recipient_first_name: { type: string, example: Maria }
         updated_at: { type: string, format: date-time }
@@ -109,20 +234,68 @@ components:
           type: array
           items:
             type: object
+            required: [status, created_at]
             properties:
               status: { $ref: "#/components/schemas/Status" }
               created_at: { type: string, format: date-time }
     UpdateDelivery:
       type: object
-      description: Only the fields sent are changed. Status changes through delivery events.
+      additionalProperties: false
+      description: |
+        Only the fields sent are changed. Sending any part of the address checks the whole address,
+        and drops the map position unless latitude and longitude are sent too (null is the same as
+        not sending them). Status changes through delivery events.
       properties:
-        recipient_name: { type: string }
-        recipient_email: { type: string, format: email }
-        address: { type: string }
-        driver_id: { type: integer, format: int64 }
+        recipient_name: { type: string, maxLength: 120 }
+        recipient_email: { type: string, format: email, maxLength: 254 }
+        recipient_phone: { type: string, example: "11987654321", description: "10 or 11 digits with the area code (punctuation is ignored)" }
+        postal_code: { type: string, example: "01001000", description: "CEP, 8 digits (punctuation is ignored)" }
+        street: { type: string, maxLength: 200 }
+        number: { type: string, maxLength: 20, example: "S/N" }
+        complement: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100, description: Bairro }
+        city: { type: string, maxLength: 100 }
+        state: { $ref: "#/components/schemas/State" }
+        address_reference: { type: string, maxLength: 300, description: Ponto de referência or notes for the driver }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
+        driver_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: A driver of the same carrier. Null or absent keeps the current driver; it cannot be removed here.
+    Route:
+      type: object
+      description: |
+        The driver's route for today (Brazil's day). Packages to the same address (CEP, street and
+        number) are one stop; packages are numbered 1..N in delivery order. A package the carrier
+        gave to another driver leaves the route.
+      required: [date, total_packages, stops]
+      properties:
+        date: { type: string, format: date }
+        total_packages: { type: integer }
+        stops:
+          type: array
+          items:
+            type: object
+            required: [number, address, latitude, longitude, packages]
+            properties:
+              number: { type: integer, example: 1 }
+              address: { type: string, description: Without the complement }
+              latitude: { type: number, format: double, nullable: true }
+              longitude: { type: number, format: double, nullable: true }
+              packages:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Delivery"
+                    - type: object
+                      required: [position]
+                      properties:
+                        position: { type: integer, description: "Position of the package in the route, from 1" }
   responses:
     BadRequest:
-      description: Malformed request
+      description: Malformed request (invalid JSON, empty body, unknown field or malformed id)
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Unauthorized:
       description: Missing or invalid token
@@ -130,8 +303,14 @@ components:
     Forbidden:
       description: Role not allowed
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ForeignOrigin:
+      description: The request came from a browser on a site not listed in CORS_ORIGINS
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     NotFound:
       description: Not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: The request clashes with the current state; the message says how
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     TooManyRequests:
       description: Too many requests or failed logins; wait for Retry-After seconds
@@ -147,25 +326,59 @@ components:
       in: path
       required: true
       schema: { type: integer, format: int64 }
+    code:
+      name: code
+      in: path
+      required: true
+      schema: { type: string, example: RS7K2M9QXA4P }
+    page:
+      name: page
+      in: query
+      description: Above 10000 answers 422
+      schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+    size:
+      name: size
+      in: query
+      description: Above 100, or not a number, falls back to 20
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
 paths:
   /health:
     get:
-      summary: Health check (also pings the database)
+      summary: Health check (pings the database and, when configured, Redis)
       responses:
-        "200": { description: OK }
-        "503": { description: Database unavailable }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties: { status: { type: string, example: ok } }
+        "503":
+          description: Database or Redis unavailable
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /openapi.yaml:
+    get:
+      summary: This specification
+      responses:
+        "200":
+          description: The OpenAPI document
+          content: { application/yaml: { schema: { type: string } } }
   /auth/login:
     post:
       summary: Log in and get a short-lived JWT plus a refresh cookie
       description: |
         The access token lasts JWT_TTL (15 minutes by default). The refresh token comes in the
         rastreia_refresh cookie (HttpOnly, SameSite=Strict, Path=/auth) and is used on /auth/refresh.
+        After 5 wrong passwords for an e-mail, it is locked for a while (429). A browser must send it
+        from a site in CORS_ORIGINS; clients without an Origin header are fine.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [email, password]
               properties:
                 email: { type: string, format: email }
@@ -175,7 +388,34 @@ paths:
           description: Logged in. Sets the rastreia_refresh cookie.
           content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
+        "401":
+          description: Wrong e-mail or password (the same answer for both)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "403": { $ref: "#/components/responses/ForeignOrigin" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: "Login unavailable: the failed-login counter (Redis) did not answer"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /auth/signup:
+    post:
+      summary: Sign a carrier up and log its owner in
+      description: |
+        Creates the carrier and the account of the person who runs it, with the carrier role, and
+        answers like /auth/login (access token plus the rastreia_refresh cookie). Has its own rate
+        limit, the same size as login's (10 per minute per IP).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SignUp" } } }
+      responses:
+        "200":
+          description: Signed up and logged in. Sets the rastreia_refresh cookie.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/ForeignOrigin" }
+        "409":
+          description: E-mail or CNPJ already in use
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "422": { $ref: "#/components/responses/Invalid" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /auth/refresh:
     post:
@@ -189,8 +429,12 @@ paths:
         "200":
           description: New tokens. Sets a new rastreia_refresh cookie.
           content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "401":
+          description: Missing, expired, revoked or reused refresh token
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "403":
+          description: Origin missing or not in CORS_ORIGINS
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /auth/logout:
     post:
@@ -200,11 +444,32 @@ paths:
         - { name: rastreia_refresh, in: cookie, required: false, schema: { type: string } }
       responses:
         "204": { description: Logged out }
-        "403": { $ref: "#/components/responses/Forbidden" }
+        "403":
+          description: Origin missing or not in CORS_ORIGINS
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+  /me:
+    get:
+      summary: The logged-in user and their carrier
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Current user
+          content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /summary:
+    get:
+      summary: Carrier dashboard numbers
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: Summary
+          content: { application/json: { schema: { $ref: "#/components/schemas/Summary" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /drivers:
     get:
-      summary: List drivers
+      summary: List the carrier's drivers
       security: [{ bearer: [] }]
       responses:
         "200":
@@ -213,7 +478,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
-      summary: Create a driver
+      summary: Create a driver for the carrier
       security: [{ bearer: [] }]
       requestBody:
         required: true
@@ -225,16 +490,30 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { description: E-mail already in use }
+        "409":
+          description: E-mail already in use
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "422": { $ref: "#/components/responses/Invalid" }
   /deliveries:
     get:
-      summary: List deliveries, newest first
+      summary: List the carrier's deliveries, newest first
       security: [{ bearer: [] }]
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - name: q
+          in: query
+          description: |
+            Search: part of the tracking code or of the recipient's name or e-mail, ignoring case
+            and accents ("joao" finds "João"). Adds up with status.
+          schema: { type: string, maxLength: 100 }
+        - name: driver
+          in: query
+          description: |
+            "none" for the deliveries nobody was assigned to, or a driver's id for that driver's.
+            Adds up with status and q.
+          schema: { type: string, pattern: "^(none|[1-9][0-9]*)$", example: none }
+        - { $ref: "#/components/parameters/page" }
+        - { $ref: "#/components/parameters/size" }
       responses:
         "200":
           description: Deliveries
@@ -252,7 +531,7 @@ paths:
             Optional, 1 to 255 visible ASCII characters. Retrying with the same key within 24 hours
             returns the delivery created the first time, with Idempotent-Replayed: true, instead of
             creating another. The same key with a different body is rejected with 422.
-          schema: { type: string, maxLength: 255 }
+          schema: { type: string, minLength: 1, maxLength: 255 }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/CreateDelivery" } } }
@@ -270,11 +549,13 @@ paths:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:
       summary: Get a delivery
+      description: Carriers see every delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       responses:
         "200":
           description: Delivery
           content: { application/json: { schema: { $ref: "#/components/schemas/Delivery" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -292,22 +573,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The recipient's data was erased; the delivery can no longer change
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "422": { $ref: "#/components/responses/Invalid" }
   /deliveries/{id}/events:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:
       summary: Status history of a delivery, oldest first
-      description: Admins see every delivery; drivers only those assigned to them (404 for any other).
+      description: Carriers see every delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       responses:
         "200":
           description: Events
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Event" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       summary: Change the status of a delivery
-      description: Admins may change any delivery; drivers only those assigned to them (404 for any other).
+      description: Carriers may change any delivery of their own; drivers only those assigned to them (404 for any other).
       security: [{ bearer: [] }]
       requestBody:
         required: true
@@ -318,17 +604,23 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Event" } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: Transition not allowed, or the status changed meanwhile }
+        "409":
+          description: "Transition not allowed, the status changed meanwhile, or the recipient's data was erased"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "422": { $ref: "#/components/responses/Invalid" }
   /me/deliveries:
     get:
-      summary: Deliveries assigned to the driver making the request, newest first
+      summary: Deliveries assigned to the driver making the request
+      description: |
+        Open deliveries first, then the delivered ones, newest first in each part, so an old open
+        delivery stays on the first page. Deliveries whose data was erased are left out.
       security: [{ bearer: [] }]
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { $ref: "#/components/parameters/page" }
+        - { $ref: "#/components/parameters/size" }
       responses:
         "200":
           description: Deliveries
@@ -336,14 +628,115 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/Invalid" }
+  /me/route:
+    get:
+      summary: The driver's route for today, empty until a package is scanned
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /me/route/deliveries:
+    post:
+      summary: Load a package into today's route by its tracking code
+      description: |
+        code is the tracking code or the tracking link from the label's QR code. A delivery of the
+        carrier without a driver becomes the driver's. Scanning it again changes nothing.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, example: RS7K2M9QXA4P }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Delivered already, assigned to another driver, or the route has 300 packages"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /me/route/deliveries/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    delete:
+      summary: Take a package out of today's route; it stays assigned to the driver
+      security: [{ bearer: [] }]
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/route/order:
+    put:
+      summary: Save the order the driver chose
+      description: Packages of the same stop stay together, in the place of the first of them.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [delivery_ids]
+              properties:
+                delivery_ids:
+                  type: array
+                  description: Every package of the route, once, in the new order
+                  items: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /me/route/optimize:
+    post:
+      summary: Put the stops in a short order
+      description: |
+        Nearest neighbor and 2-opt over straight-line distances, starting near the driver's position
+        when sent. Stops without a map position go to the end. Send {} to start from the first stop.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                latitude: { type: number, format: double, minimum: -90, maximum: 90, nullable: true }
+                longitude: { type: number, format: double, minimum: -180, maximum: 180, nullable: true }
+      responses:
+        "200":
+          description: The route
+          content: { application/json: { schema: { $ref: "#/components/schemas/Route" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
   /public/tracking/{code}:
+    parameters: [{ $ref: "#/components/parameters/code" }]
     get:
       summary: Public tracking page data (no login)
       description: |
-        Unknown, malformed and expired codes answer 404. The link expires 30 days after the delivery
-        is delivered or last failed. Limited to 30 requests per minute per IP.
-      parameters:
-        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+        Unknown, malformed, expired and anonymized codes answer 404. The link expires 30 days after
+        the delivery is delivered or last failed. Limited to 30 requests per minute per IP.
       responses:
         "200":
           description: Tracking
@@ -361,75 +754,89 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [public_key]
                 properties: { public_key: { type: string, description: base64url } }
+        "404":
+          description: Web Push is off (the API has no VAPID_PUBLIC_KEY)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   /public/tracking/{code}/push:
+    parameters: [{ $ref: "#/components/parameters/code" }]
     post:
       summary: Get push notifications about this delivery on this browser (no login)
       description: |
-        The body is the JSON of the browser PushSubscription. The endpoint must be https on a known
+        The body is the browser's PushSubscription.toJSON(). The endpoint must be https on a known
         browser push service (Google, Mozilla, Microsoft, Apple), since the worker posts to it.
-        Up to 10 browsers per delivery; delivered deliveries answer 409. Subscriptions are deleted
-        when the delivery is delivered. Shares the tracking rate limit.
-      parameters:
-        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+        Up to 10 browsers per delivery (one already subscribed can always subscribe again); delivered
+        deliveries answer 409. Subscriptions are deleted when the delivery is delivered or anonymized.
+        Shares the tracking rate limit.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [endpoint, keys]
               properties:
                 endpoint: { type: string, example: "https://fcm.googleapis.com/fcm/send/abc" }
+                expirationTime: { type: number, nullable: true, description: Sent by browsers; ignored }
                 keys:
                   type: object
+                  additionalProperties: false
                   required: [p256dh, auth]
                   properties: { p256dh: { type: string }, auth: { type: string } }
       responses:
         "204": { description: Subscribed }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: Delivered, or too many browsers, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409":
+          description: "Delivered, or too many browsers"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "422": { $ref: "#/components/responses/Invalid" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
     delete:
       summary: Stop push notifications about this delivery on this browser (no login)
-      parameters:
-        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [endpoint]
               properties: { endpoint: { type: string } }
       responses:
         "204": { description: Unsubscribed (also when it was not subscribed) }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /public/tracking/{code}/live:
+    parameters: [{ $ref: "#/components/parameters/code" }]
     get:
       summary: Live tracking over WebSocket (no login)
       description: |
         Upgrades to a WebSocket. After every change to the delivery the server sends a text message
         with the same Tracking body as GET /public/tracking/{code}. The client sends nothing.
         Unknown and expired codes answer 404 before the upgrade. Shares the tracking rate limit,
-        and each IP may keep at most 20 live connections.
-      parameters:
-        - { name: code, in: path, required: true, schema: { type: string, example: RS7K2M9QXA4P } }
+        and each IP may keep at most 20 live connections. Close code 1001 means the server is
+        shutting down and 1013 that the client fell behind: reconnect and reload.
       responses:
         "101": { description: Switching to WebSocket }
+        "403": { description: "Origin not allowed (plain text, from the WebSocket library)" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "426": { description: "Not a WebSocket request (plain text, from the WebSocket library)" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
   /live/deliveries:
     get:
-      summary: Live changes for the admin panel over WebSocket
+      summary: Live changes for the carrier panel over WebSocket
       description: |
         Upgrades to a WebSocket. Browsers cannot send an Authorization header here, so the first
-        message must be `{"token": "<admin access token>"}`, within 5 seconds. Then the server sends
-        `{"delivery_id": 1, "status": "in_transit"}` whenever a delivery is created or changes.
-        Close code 4001 means the token is missing, invalid, not an admin's, or expired: renew it
-        with POST /auth/refresh and reconnect.
+        message must be `{"token": "<carrier access token>"}`, within 5 seconds. Then the server sends
+        `{"delivery_id": 1, "status": "in_transit"}` whenever a delivery of that carrier is created or
+        changes. Close code 4001 means the token is missing, invalid, not a carrier's, or expired: renew it
+        with POST /auth/refresh and reconnect. 1001 and 1013 mean the same as on the public stream.
       responses:
         "101": { description: Switching to WebSocket }
+        "403": { description: "Origin not allowed (plain text, from the WebSocket library)" }
+        "426": { description: "Not a WebSocket request (plain text, from the WebSocket library)" }
         "429": { $ref: "#/components/responses/TooManyRequests" }

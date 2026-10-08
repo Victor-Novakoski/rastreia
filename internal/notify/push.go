@@ -49,8 +49,9 @@ func WebPush(v VAPID) PushSender {
 			Endpoint: s.Endpoint,
 			Keys:     webpush.Keys{P256dh: s.P256dh, Auth: s.Auth},
 		}, &webpush.Options{
-			HTTPClient:      client,
-			Subscriber:      v.Subject,
+			HTTPClient: client,
+			// The library adds "mailto:" itself unless it is an https URL.
+			Subscriber:      strings.TrimPrefix(v.Subject, "mailto:"),
 			VAPIDPublicKey:  v.PublicKey,
 			VAPIDPrivateKey: v.PrivateKey,
 			TTL:             3600,

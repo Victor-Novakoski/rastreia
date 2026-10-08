@@ -10,46 +10,97 @@ import (
 )
 
 type Querier interface {
+	// AddRouteItem puts the delivery at the end of the route; adding it twice
+	// changes nothing and affects no rows.
+	AddRouteItem(ctx context.Context, arg AddRouteItemParams) (int64, error)
 	// AnonymizeDeliveries erases the recipient of deliveries finished before
-	// the given time, and the drivers' notes, which are free text and may name
-	// people. Returns how many deliveries were anonymized.
-	AnonymizeDeliveries(ctx context.Context, before time.Time) (int64, error)
+	// the given time, and of the ones never finished that were created before
+	// abandoned_before; also the drivers' notes, which are free text and may name
+	// people, and the browsers still following them (a failed delivery keeps
+	// them). Returns how many deliveries were anonymized.
+	AnonymizeDeliveries(ctx context.Context, arg AnonymizeDeliveriesParams) (int64, error)
+	// ClaimDelivery assigns a delivery with no driver to the driver who scanned
+	// it; one that already has a driver is left alone.
+	ClaimDelivery(ctx context.Context, arg ClaimDeliveryParams) (Delivery, error)
 	// ClaimUnpublishedEvents locks the next events to publish. SKIP LOCKED lets
 	// several API instances run the relay without sending an event twice.
 	ClaimUnpublishedEvents(ctx context.Context, limit int32) ([]ClaimUnpublishedEventsRow, error)
-	CountPushSubscriptions(ctx context.Context, deliveryID int64) (int64, error)
+	// CountDeliveriesByStatus feeds the carrier's dashboard. since limits the
+	// count to deliveries created from that moment on.
+	CountDeliveriesByStatus(ctx context.Context, arg CountDeliveriesByStatusParams) ([]CountDeliveriesByStatusRow, error)
+	// CountPushSubscriptions counts the other browsers following the delivery,
+	// so one subscribing again does not count itself.
+	CountPushSubscriptions(ctx context.Context, arg CountPushSubscriptionsParams) (int64, error)
+	CountUnassignedDeliveries(ctx context.Context, carrierID int64) (int64, error)
+	CreateCarrier(ctx context.Context, arg CreateCarrierParams) (Carrier, error)
+	// CreateCarrierWithOwner signs a carrier up with the person who runs it, in
+	// one statement, so a taken e-mail leaves no carrier behind.
+	CreateCarrierWithOwner(ctx context.Context, arg CreateCarrierWithOwnerParams) (User, error)
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
 	CreateDeliveryEvent(ctx context.Context, arg CreateDeliveryEventParams) (DeliveryEvent, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteExpiredIdempotencyKey(ctx context.Context, arg DeleteExpiredIdempotencyKeyParams) error
+	// DeleteExpiredRefreshTokens drops the refresh tokens that no longer log
+	// anyone in. Reuse is only checked on tokens that have not expired, so
+	// nothing is lost.
+	DeleteExpiredRefreshTokens(ctx context.Context) (int64, error)
+	// DeleteOldIdempotencyKeys drops the keys older than the 24 hours in which a
+	// retry can still use them.
+	DeleteOldIdempotencyKeys(ctx context.Context) (int64, error)
 	DeletePushSubscription(ctx context.Context, arg DeletePushSubscriptionParams) error
 	DeletePushSubscriptionByID(ctx context.Context, id int64) error
 	DeletePushSubscriptionsByCode(ctx context.Context, trackingCode string) error
+	// EnsureRoute returns the driver's route for the day, creating it on first use.
+	EnsureRoute(ctx context.Context, arg EnsureRouteParams) (Route, error)
+	GetCarrier(ctx context.Context, id int64) (Carrier, error)
 	GetDelivery(ctx context.Context, id int64) (Delivery, error)
 	GetDeliveryByTrackingCode(ctx context.Context, trackingCode string) (Delivery, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetRefreshToken(ctx context.Context, tokenHash []byte) (GetRefreshTokenRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	ListCarrierUsersByRole(ctx context.Context, arg ListCarrierUsersByRoleParams) ([]User, error)
+	// ListDeliveries lists the carrier's deliveries, newest first. search, when
+	// given, matches part of the tracking code or of the recipient's name or
+	// e-mail. The service sends it in lower case, without accents and with the
+	// LIKE wildcards escaped; translate drops the same accents from the name
+	// (the letters of foldAccents in internal/delivery), so "joao" finds "João".
+	// unassigned keeps only deliveries without a driver; driver_id, only those
+	// of one driver.
 	ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]Delivery, error)
 	ListDeliveryEvents(ctx context.Context, deliveryID int64) ([]DeliveryEvent, error)
+	// ListDriverDeliveries lists what is still to do before what was delivered,
+	// so an old open delivery stays on the first page of a busy driver.
+	// Deliveries whose data was erased leave the list: nothing is left to do.
 	ListDriverDeliveries(ctx context.Context, arg ListDriverDeliveriesParams) ([]Delivery, error)
 	ListPushSubscriptionsByCode(ctx context.Context, trackingCode string) ([]PushSubscription, error)
-	ListUsersByRole(ctx context.Context, role string) ([]User, error)
+	// ListRouteItems lists the route's packages in order. A package the carrier
+	// gave to another driver after it was scanned leaves the route, so the first
+	// driver no longer sees the recipient.
+	ListRouteItems(ctx context.Context, routeID int64) ([]ListRouteItemsRow, error)
 	MarkEventsPublished(ctx context.Context, ids []int64) error
+	RemoveRouteItem(ctx context.Context, arg RemoveRouteItemParams) (int64, error)
 	// ReserveIdempotencyKey returns no row when the key already exists. A
 	// concurrent request with the same key waits here until the first one
 	// commits or rolls back.
 	ReserveIdempotencyKey(ctx context.Context, arg ReserveIdempotencyKeyParams) (IdempotencyKey, error)
 	RevokeRefreshFamily(ctx context.Context, familyID string) error
 	// SetDeliveryStatus only changes the row if the status is still the one the
-	// caller saw, so two concurrent events cannot both apply.
+	// caller saw, so two concurrent events cannot both apply, and if the
+	// recipient's data was not erased in the meantime.
 	SetDeliveryStatus(ctx context.Context, arg SetDeliveryStatusParams) (Delivery, error)
 	SetIdempotencyKeyDelivery(ctx context.Context, arg SetIdempotencyKeyDeliveryParams) error
+	// SetRoutePositions numbers the route's deliveries in the order of the ids
+	// given, from 1.
+	SetRoutePositions(ctx context.Context, arg SetRoutePositionsParams) error
 	// SkipStaleEvents drops notifications nobody wants anymore, such as the ones
 	// piled up while RabbitMQ was off.
 	SkipStaleEvents(ctx context.Context, before time.Time) (int64, error)
+	// UpdateDelivery writes every recipient and address field: the service
+	// merges the change into the current delivery first. The driver is only
+	// changed when sent. An anonymized delivery is left alone, or an edit racing
+	// the retention job would write the erased data back.
 	UpdateDelivery(ctx context.Context, arg UpdateDeliveryParams) (Delivery, error)
 	UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error
 	// Marks the token used only if nobody did it first, so two refreshes racing

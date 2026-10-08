@@ -1,6 +1,9 @@
 package auth
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 const (
 	MinPasswordLength = 10
@@ -31,4 +34,23 @@ func PasswordProblem(password string) string {
 		return "is too common"
 	}
 	return ""
+}
+
+// PasswordHasEmail tells whether the password is built from the e-mail of
+// the account (its part before the @, ignoring case and punctuation), the
+// first guess of anyone who knows the e-mail. Parts shorter than 4 letters
+// match too many passwords to count.
+func PasswordHasEmail(password, email string) bool {
+	local, _, _ := strings.Cut(email, "@")
+	local = lettersAndDigits(local)
+	return len(local) >= 4 && strings.Contains(lettersAndDigits(password), local)
+}
+
+func lettersAndDigits(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, s)
 }

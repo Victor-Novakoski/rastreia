@@ -5,14 +5,22 @@ const messages: Record<string, string> = {
   'is required': 'Obrigatório.',
   'cannot be empty': 'Não pode ficar vazio.',
   'must be a valid e-mail': 'E-mail inválido.',
+  'must have the area code and 10 or 11 digits': 'Use o DDD e o número: 10 ou 11 dígitos.',
+  'must have 8 digits': 'O CEP tem 8 dígitos.',
+  'must be a Brazilian state (UF)': 'Use a sigla de um estado, como SP.',
+  'must have at most 20 characters': 'Máximo de 20 caracteres.',
+  'must have at most 100 characters': 'Máximo de 100 caracteres.',
   'must have at most 120 characters': 'Máximo de 120 caracteres.',
+  'must have at most 200 characters': 'Máximo de 200 caracteres.',
   'must have at most 300 characters': 'Máximo de 300 caracteres.',
   'must have at most 500 characters': 'Máximo de 500 caracteres.',
   'must have at least 10 characters': 'Mínimo de 10 caracteres.',
   'must have at most 72 bytes': 'Senha longa demais.',
   'is too common': 'Senha muito comum. Escolha outra.',
+  'must not contain the e-mail': 'A senha não pode conter o e-mail.',
   'is required when the delivery fails': 'Conte o motivo da falha.',
   'must be an existing driver': 'Escolha um motorista da lista.',
+  'must be a valid CNPJ': 'CNPJ inválido. Confira os números.',
 }
 
 export type FieldErrors = Record<string, string>

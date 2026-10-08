@@ -19,7 +19,9 @@ var trackingCodeRe = regexp.MustCompile(`^RS[` + codeAlphabet + `]{10}$`)
 // Tracking is what anyone holding the tracking code may see. It leaves out
 // the recipient's e-mail, address and last name, the driver and event notes.
 type Tracking struct {
-	TrackingCode       string          `json:"tracking_code"`
+	TrackingCode string `json:"tracking_code"`
+	// CarrierName says who is delivering, as on a shipping label.
+	CarrierName        string          `json:"carrier_name"`
 	Status             string          `json:"status"`
 	RecipientFirstName string          `json:"recipient_first_name"`
 	UpdatedAt          time.Time       `json:"updated_at"`
@@ -42,8 +44,13 @@ func (s *Service) Track(ctx context.Context, code string) (Tracking, error) {
 	if err != nil {
 		return Tracking{}, err
 	}
+	carrier, err := s.store.GetCarrier(ctx, d.CarrierID)
+	if err != nil {
+		return Tracking{}, err
+	}
 	t := Tracking{
 		TrackingCode:       d.TrackingCode,
+		CarrierName:        carrier.Name,
 		Status:             d.Status,
 		RecipientFirstName: firstName(d.RecipientName),
 		UpdatedAt:          d.UpdatedAt,
@@ -56,20 +63,27 @@ func (s *Service) Track(ctx context.Context, code string) (Tracking, error) {
 }
 
 // PublicDelivery finds the delivery behind a public tracking code, with the
-// same not found as Track for malformed, unknown and expired codes.
+// same not found as Track for malformed, unknown, expired and anonymized
+// codes.
 func (s *Service) PublicDelivery(ctx context.Context, code string) (store.Delivery, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
-	if !trackingCodeRe.MatchString(code) {
+	if !IsTrackingCode(code) {
 		return store.Delivery{}, apperr.ErrNotFound
 	}
 	d, err := s.store.GetDeliveryByTrackingCode(ctx, code)
 	if err != nil {
 		return store.Delivery{}, notFound(err)
 	}
-	if d.CompletedAt != nil && s.now().Sub(*d.CompletedAt) > trackingTTL {
+	if d.AnonymizedAt != nil || (d.CompletedAt != nil && s.now().Sub(*d.CompletedAt) > trackingTTL) {
 		return store.Delivery{}, apperr.ErrNotFound
 	}
 	return d, nil
+}
+
+// IsTrackingCode reports whether code has the shape of a tracking code, so
+// what is not one is refused without a query.
+func IsTrackingCode(code string) bool {
+	return trackingCodeRe.MatchString(code)
 }
 
 func firstName(name string) string {
