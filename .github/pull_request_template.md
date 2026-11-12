@@ -10,5 +10,5 @@
 
 - [ ] Título no padrão Conventional Commits (`feat: ...`, `fix: ...`)
 - [ ] Testes novos ou atualizados
-- [ ] `api/openapi.yaml` e `docs/` atualizados, se mudou rota, variável ou decisão
-- [ ] Revisei o [checklist de segurança](https://github.com/Victor-Novakoski/rastreia/blob/develop/docs/RULES.md#3-segurança)
+- [ ] `api/openapi.yaml`, `docs/` e o `CLAUDE.md` do módulo atualizados, se mudou rota, variável, regra ou decisão
+- [ ] Revisei o [checklist de segurança](https://github.com/Victor-Novakoski/rastreia/blob/develop/CLAUDE.md#segurança-checklist-de-toda-mudança)

@@ -81,13 +81,11 @@ docker compose up --build
 | Front | http://localhost:5173 |
 | API | http://localhost:8080 (especificação em `/openapi.yaml`) |
 | E-mails enviados (Mailpit) | http://localhost:8025 |
-| Painel do RabbitMQ | http://localhost:15672 (guest/guest) |
+| Painel do RabbitMQ | http://localhost:15672 (usuário e senha da `RABBITMQ_URL` no `.env.example`) |
 
 A API cria uma conta de demonstração, a "Transportadora Demo", que começa vazia. Qualquer pessoa também pode criar a própria transportadora pela página inicial.
 
-| E-mail | Senha |
-| --- | --- |
-| admin@rastreia.dev | admin12345 |
+O e-mail e a senha dessa conta são os de `ADMIN_EMAIL` e `ADMIN_PASSWORD` no `.env.example`. Em produção, a API recusa subir com a senha de exemplo.
 
 Em desenvolvimento, a API e o worker rodam com [air](https://github.com/air-verse/air) e o front com o Vite: salvar um arquivo recompila e recarrega sozinho. Essa configuração fica em `docker-compose.override.yml`, que o Docker Compose carrega automaticamente. Se a porta 5432 já estiver ocupada por um Postgres instalado na máquina, suba com `DB_PORT=5433 docker compose up --build` (`REDIS_PORT` e `RABBITMQ_PORT` fazem o mesmo para as outras portas).
 
@@ -167,13 +165,15 @@ Um passeio pela API com curl (precisa do curl 7.82 ou mais novo, pelo `--json`, 
 
 ```bash
 API=http://localhost:8080
+SENHA_DEMO=$(grep ^ADMIN_PASSWORD= .env.example | cut -d= -f2)
+SENHA_MOTORISTA=$(openssl rand -base64 15)
 
 # entra com a conta demo
-TOKEN=$(curl -s $API/auth/login --json '{"email":"admin@rastreia.dev","password":"admin12345"}' | jq -r .token)
+TOKEN=$(curl -s $API/auth/login --json '{"email":"admin@rastreia.dev","password":"'"$SENHA_DEMO"'"}' | jq -r .token)
 
 # cadastra um motorista
 DRIVER_ID=$(curl -s $API/drivers -H "Authorization: Bearer $TOKEN" \
-  --json '{"name":"João Pereira","email":"joao@rastreia.dev","password":"motorista1"}' | jq -r .id)
+  --json '{"name":"João Pereira","email":"joao@rastreia.dev","password":"'"$SENHA_MOTORISTA"'"}' | jq -r .id)
 
 # cria uma entrega para ele (a chave evita criar a mesma entrega duas vezes se a requisição for repetida)
 ENTREGA=$(curl -s $API/deliveries -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: pedido-123" --json '{
@@ -184,7 +184,7 @@ ID=$(echo "$ENTREGA" | jq -r .id)
 CODIGO=$(echo "$ENTREGA" | jq -r .tracking_code)
 
 # o motorista entra, vê as entregas dele e muda o status
-DRIVER=$(curl -s $API/auth/login --json '{"email":"joao@rastreia.dev","password":"motorista1"}' | jq -r .token)
+DRIVER=$(curl -s $API/auth/login --json '{"email":"joao@rastreia.dev","password":"'"$SENHA_MOTORISTA"'"}' | jq -r .token)
 curl -s $API/me/deliveries -H "Authorization: Bearer $DRIVER"
 curl -s $API/deliveries/$ID/events -H "Authorization: Bearer $DRIVER" --json '{"status":"picked_up"}'
 
@@ -260,7 +260,7 @@ docs/                 produto, arquitetura, segurança, design, regras, tarefas 
 - **Rota sem serviço pago:** uma heurística em Go no lugar do Google, do Mapbox ou de um servidor OSRM para manter.
 - **Código de rastreio sem 0/O e 1/I:** fácil de ditar por telefone e impossível de adivinhar a partir de outro código.
 
-O registro completo, com as alternativas descartadas, está em [DECISIONS.md](docs/DECISIONS.md).
+O registro completo, uma decisão por arquivo com as alternativas descartadas, está em [docs/decisoes](docs/decisoes/).
 
 ## Documentação
 
@@ -268,16 +268,15 @@ O registro completo, com as alternativas descartadas, está em [DECISIONS.md](do
 | --- | --- |
 | [PRD](docs/PRD.md) | O que o produto é, os requisitos e o que está fora de escopo |
 | [Arquitetura](docs/ARCHITECTURE.md) | Peças, camadas, pastas, fluxos e banco de dados |
-| [Segurança](docs/SECURITY.md) | Como cada risco é tratado e o que falta |
+| [Segurança](docs/SECURITY.md) | Os 27 riscos, como cada um é tratado e o que falta |
 | [Design](docs/DESIGN.md) | Convenções da API e das interfaces |
-| [Regras](docs/RULES.md) | Regras de código, testes, git e definição de pronto |
-| [Tarefas](docs/TASKS.md) | Backlog por etapa |
-| [Decisões](docs/DECISIONS.md) | Decisões tomadas, o porquê de cada uma e armadilhas conhecidas |
+| [Decisões](docs/decisoes/) | Uma decisão por arquivo, com o porquê e o que foi descartado |
+| [CLAUDE.md](CLAUDE.md) e [índice](docs/INDEX.md) | Regras de código, testes, git e definição de pronto, com um `CLAUDE.md` por módulo |
 | [OpenAPI](api/openapi.yaml) | Rotas, corpos e respostas da API |
 
 ## Próximos passos
 
-O deploy: front estático, API e worker em containers atrás de HTTPS, banco sem acesso de fora e segredos fora de arquivo. O que falta está em [TASKS.md](docs/TASKS.md).
+O deploy: front estático, API e worker em containers atrás de HTTPS, banco sem acesso de fora e segredos fora de arquivo. Sem custo de hospedagem. O que falta está nas [issues](https://github.com/Victor-Novakoski/rastreia/issues).
 
 ## Licença
 

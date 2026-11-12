@@ -1,6 +1,6 @@
 # PRD — Rastreia
 
-Documento de requisitos do produto. Define **o que** o Rastreia é e **o que não é**. Qualquer funcionalidade nova precisa caber aqui antes de entrar em [TASKS.md](TASKS.md).
+Documento de requisitos do produto. Define **o que** o Rastreia é e **o que não é**. Qualquer funcionalidade nova precisa caber aqui antes de virar issue.
 
 ## Problema
 
